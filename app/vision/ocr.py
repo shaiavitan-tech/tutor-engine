@@ -34,7 +34,7 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
 
         # שימוש ב-chat.completions עם תוכן תמונה + טקסט
         resp = client.chat.completions.create(
-            model=VISION_MODEL,
+            VISION_MODEL = "gpt-4.1-mini",
             messages=[
                 {
                     "role": "user",
