@@ -32,7 +32,7 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
         data_url = f"data:image/jpeg;base64,{b64_image}"
 
-        # שימוש ב-responses / chat עם vision – תבנית מומלצת בדוק. [web:163][web:170]
+        # קריאה ל-Vision בפורמט הנכון
         response = client.responses.create(
             model=VISION_MODEL,
             input=[
@@ -40,7 +40,7 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
                     "role": "user",
                     "content": [
                         {
-                            "type": "input_text",
+                            "type": "text",
                             "text": (
                                 "Please extract only the text of the exercise from this image. "
                                 "If there are multiple lines, keep them in order. "
@@ -56,14 +56,52 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
             ],
         )
 
-        raw_text = response.output_text or ""
+        # ניסיון ראשון: להשתמש ב-helper אם קיים
+        raw_text = getattr(response, "output_text", "") or ""
         logger.debug(
-            "ocr_image_to_text | raw_text_length=%s",
+            "ocr_image_to_text | output_text_length=%s value_preview=%r",
             len(raw_text),
+            raw_text[:200],
         )
 
-        # נרמול בסיסי – אפשר להשאיר עם שורות או להפוך לשורה אחת
+        # Fallback: אם output_text ריק, לנסות לאסוף טקסט מה-output הגולמי (אם יש)
+        if not raw_text and getattr(response, "output", None):
+            parts: list[str] = []
+            try:
+                for item in response.output:
+                    content = getattr(item, "content", None)
+                    if not content:
+                        continue
+                    for c in content:
+                        c_type = getattr(c, "type", None)
+                        # בגרסאות שונות זה יכול להיקרא "output_text" או "text"
+                        if c_type in ("output_text", "text"):
+                            text_val = getattr(c, "text", "") or ""
+                            if text_val:
+                                parts.append(text_val)
+                raw_text = " ".join(parts)
+                logger.debug(
+                    "ocr_image_to_text | fallback_output_text_length=%s value_preview=%r",
+                    len(raw_text),
+                    raw_text[:200],
+                )
+            except Exception as parse_exc:
+                logger.error(
+                    "ocr_image_to_text | error parsing response.output | error=%s",
+                    parse_exc,
+                )
+
+        if not raw_text:
+            logger.warning("ocr_image_to_text | empty OCR result from Vision")
+            return ""
+
+        # נרמול בסיסי – הפיכת רווחים מרובים לרווח אחד, הסרת רווחים בקצוות
         normalized = " ".join(raw_text.split())
+        logger.debug(
+            "ocr_image_to_text | normalized_text_length=%s value_preview=%r",
+            len(normalized),
+            normalized[:200],
+        )
         return normalized.strip()
 
     except Exception as exc:

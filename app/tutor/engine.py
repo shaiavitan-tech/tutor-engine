@@ -36,9 +36,26 @@ class AnswerCheckResult:
 
 
 @dataclass
+class SolutionStep:
+    """
+    צעד בודד בתכנית פתרון:
+    - description: ניסוח טבעי של הצעד.
+    - expression: ביטוי אלגברי/משוואה אחרי הצעד (אם רלוונטי), למשל "15x=60" או "2x=8".
+    """
+    description: str
+    expression: Optional[str] = None
+
+
+@dataclass
 class SolutionPlan:
-    steps: List[str]
+    """
+    תכנית פתרון מלאה:
+    - steps: רשימת צעדים, כל צעד כולל תיאור + ביטוי ביניים (אם יש).
+    - final_answer: פתרון סופי קצר (x=4, משפט באנגלית וכו').
+    """
+    steps: List[SolutionStep]
     final_answer: str
+
 
 
 # === המחלקה המרכזית ===
@@ -70,12 +87,12 @@ class TutorEngine:
     # === רמזים: התחלת תרגיל חדש ===
 
     def generate_hint_for_new_exercise(
-        self,
-        student_name: str,
-        question: QuestionClassification,
-        raw_text: str,
-        source_type: str,
-        image_path: Optional[str] = None,
+            self,
+            student_name: str,
+            question: QuestionClassification,
+            raw_text: str,
+            source_type: str,
+            image_path: Optional[str] = None,
     ) -> Dict[str, any]:
         """
         התחלת תרגיל חדש (טקסט/תמונה):
@@ -142,7 +159,7 @@ class TutorEngine:
             # מיומנויות כ־Skill
             skills: List[Skill] = question.skills
 
-            # 1. תכנית פתרון בעזרת LLM
+            # 1. תכנית פתרון בעזרת LLM (עם SolutionStep)
             plan = self._generate_solution_plan_llm(
                 question_text=question.normalized_question,
                 subject=question.subject,
@@ -150,9 +167,11 @@ class TutorEngine:
             )
 
             # 2. שמירה ב-session_state
+            #    solution_steps: List[SolutionStep] נשמר כמו שהוא, כדי ש-generate_next_hint
+            #    יוכל להשתמש גם ב-expression של כל צעד.
             self._session_state[session.id] = {
                 "original_question": question.normalized_question,
-                "solution_steps": plan.steps,
+                "solution_steps": plan.steps,  # List[SolutionStep]
                 "final_answer": plan.final_answer,
                 "current_step_index": 0,
                 "exercise_finished": False,
@@ -166,6 +185,9 @@ class TutorEngine:
             )
 
             # 3. רמז ראשון
+            #    כאן _generate_hint_llm עדיין עובד עם רשימת מחרוזות, אז מעבירים לו רק את ה-description.
+            step_descriptions = [s.description for s in plan.steps]
+
             hint_result = self._generate_hint_llm(
                 session_id=session.id,
                 original_question=question.normalized_question,
@@ -174,7 +196,7 @@ class TutorEngine:
                 skills=skills,
                 hint_level=hint_level,
                 turns_history=[],
-                solution_steps=plan.steps,
+                solution_steps=step_descriptions,
                 current_step_index=0,
                 final_answer=plan.final_answer,
             )
@@ -208,7 +230,8 @@ class TutorEngine:
         רמז נוסף במהלך session קיים.
         - משתמש ב-session_state כדי לזהות פתרון סופי, לנהל plan וכו'.
         - אם מזהה תשובה סופית נכונה: מעדכן mastery ישירות ומחזיר פידבק סופי (בלי checker).
-        - מעדכן current_step_index לפי הצעדים שהסטודנט כבר "קפץ" אליהם.
+        - אם התשובה שקולה ל-expression של צעד מסוים ב-plan:
+          מחזיר רמז דטרמיניסטי לצעד הבא בתכנית (אם קיים), בלי לקרוא ל-LLM.
         """
         logger.info(
             "TutorEngine.generate_next_hint | session_id=%s", session_id
@@ -241,11 +264,9 @@ class TutorEngine:
                 )
                 return None
 
-            # היסטוריית turns לצורך הקשר ו-hint_level
             history_turns = sorted(db_session.turns, key=lambda t: t.created_at)
             hint_level = self._decide_next_hint_level(history_turns)
 
-            # מיומנויות מה-exercise
             detected_skill_codes = (db_session.exercise.detected_skills or {}).get(
                 "codes", []
             )
@@ -279,18 +300,33 @@ class TutorEngine:
                 self._session_state[session_id] = state
 
             original_question: str = state.get("original_question") or db_session.exercise.raw_text
-            solution_steps: List[str] = state.get("solution_steps", [])
+            raw_steps = state.get("solution_steps", [])
             final_answer: str = state.get("final_answer", "")
             current_step_index: int = int(state.get("current_step_index", 0))
             exercise_finished: bool = bool(state.get("exercise_finished", False))
 
+            # נוודא ש‑solution_steps הוא List[SolutionStep]
+            solution_steps: List[SolutionStep] = []
+            for s in raw_steps:
+                if isinstance(s, SolutionStep):
+                    solution_steps.append(s)
+                elif isinstance(s, str):
+                    solution_steps.append(SolutionStep(description=s, expression=None))
+                elif isinstance(s, dict):
+                    desc = str(s.get("description", "")).strip()
+                    expr_raw = s.get("expression")
+                    expr = str(expr_raw).strip() if isinstance(expr_raw, str) else None
+                    if desc:
+                        solution_steps.append(SolutionStep(description=desc, expression=expr))
+
             logger.debug(
-                "next_hint_state | session_id=%s | original_question=%r | final_answer=%r | current_step_index=%s | student=%r",
+                "next_hint_state | session_id=%s | original_question=%r | final_answer=%r | current_step_index=%s | student=%r | steps=%s",
                 session_id,
                 original_question,
                 final_answer,
                 current_step_index,
                 student_message,
+                len(solution_steps),
             )
 
             looks_like_exercise = "=" in student_message  # אפשר לשפר בהמשך
@@ -311,7 +347,6 @@ class TutorEngine:
                         skills=skills,
                     )
 
-                    # מאפסים state לתרגיל החדש
                     state = {
                         "original_question": student_message,
                         "solution_steps": plan.steps,
@@ -324,6 +359,7 @@ class TutorEngine:
                     solution_steps = plan.steps
                     final_answer = plan.final_answer
                     current_step_index = 0
+                    exercise_finished = False
                     is_new_exercise = True
 
                     logger.debug(
@@ -333,28 +369,59 @@ class TutorEngine:
                         plan.final_answer,
                     )
 
-            # --- 0.5 עדכון current_step_index לפי הצעדים ששירה כבר הגיעה אליהם ---
-            # --- 0.5 עדכון current_step_index לפי הצעדים ששירה כבר הגיעה אליהם ---
-            if solution_steps and not exercise_finished:
-                normalized_student = student_message.replace(" ", "")
-                normalized_question = original_question.replace(" ", "")
+            # --- 0.5 התאמה ל-expression של צעד → רמז דטרמיניסטי לצעד הבא ---
+            original_index = current_step_index
+            if solution_steps and not exercise_finished and not is_new_exercise:
+                matched_index: Optional[int] = None
 
-                # אם שירה כבר כתבה משוואה שמכילה את כל החלקים של השאלה המקורית (ולא רק חלק),
-                # נניח שהיא קפצה לפחות צעד אחד קדימה.
-                jumped_ahead = (
-                        "=" in normalized_student
-                        and all(part in normalized_student for part in normalized_question.split("=")[0].split("+"))
-                )
+                # מחפשים את הצעד הראשון קדימה שה-expression שלו שקול לתשובה של שירה
+                for idx in range(current_step_index, len(solution_steps)):
+                    expr = solution_steps[idx].expression
+                    if not expr:
+                        continue
+                    if self._is_answer_equivalent(
+                            subject=subject,
+                            question=original_question,
+                            student=student_message,
+                            target=expr,
+                    ):
+                        matched_index = idx
+                        break
 
-                if jumped_ahead and current_step_index < len(solution_steps) - 1:
-                    new_index = current_step_index + 1
+                if matched_index is not None:
+                    next_index = matched_index + 1
                     logger.debug(
-                        "generate_next_hint | heuristic jump ahead | session_id=%s from_index=%s to_index=%s",
+                        "generate_next_hint | student matched step expression  session_id=%s matched_index=%s next_index=%s",
                         session_id,
-                        current_step_index,
-                        new_index,
+                        matched_index,
+                        next_index,
                     )
-                    current_step_index = new_index
+
+                    # אם יש צעד הבא – נחזיר רמז פשוט עליו בלי LLM
+                    if next_index < len(solution_steps):
+                        prev_expr = solution_steps[matched_index].expression or original_question
+                        next_step = solution_steps[next_index]
+
+                        hint_text = (
+                            f"שירה, הגעת למשוואה {prev_expr}, שזה צעד מצוין. "
+                            f"הצעד הבא הוא: {next_step.description}. "
+                            "נסי לבצע את הצעד הזה וכתבי לי מה קיבלת."
+                        )
+
+                        # נורמליזציה לאותו פורמט כמו שאר הרמזים
+                        hint_text = self._normalize_hint_text(hint_text)
+
+                        current_step_index = next_index
+                        state["current_step_index"] = current_step_index
+
+                        return TutorHintResult(
+                            hint_text=hint_text,
+                            hint_level=hint_level,
+                            new_exercise_required=False,
+                        )
+
+                    # אם אין צעד הבא (אנחנו בעצם כבר בסוף ה-plan), רק נעדכן אינדקס ונמשיך לזרימה הרגילה
+                    current_step_index = matched_index
                     state["current_step_index"] = current_step_index
 
             # --- 1. בדיקה: האם יש פתרון סופי נכון לתרגיל הנוכחי ---
@@ -370,7 +437,6 @@ class TutorEngine:
                     session_id,
                 )
 
-                # עדכון mastery ישיר – בלי קריאה ל-checker
                 if detected_skill_codes:
                     delta = self._config.mastery.correct_delta
                     logger.debug(
@@ -393,7 +459,6 @@ class TutorEngine:
                         db_session.exercise.id,
                     )
 
-                # פידבק פשוט וברור, כולל הטריגר ל"תרגיל הבא" שפרונט מחפש
                 feedback_text = (
                     "כל הכבוד שירה, התשובה שלך נכונה! "
                     f"{final_answer} אכן פותר את התרגיל. "
@@ -414,6 +479,8 @@ class TutorEngine:
                     and solution_steps
                     and not exercise_finished
                     and not is_new_exercise
+                    and current_step_index == original_index  # לא מחזירים אחורה אם כבר קפצנו לפי expression ורק החזרנו רמז דטרמיניסטי
+                    and current_step_index < len(solution_steps) - 1
             ):
                 prev_index = max(current_step_index - 1, 0)
                 state["current_step_index"] = prev_index
@@ -424,12 +491,14 @@ class TutorEngine:
                     prev_index,
                 )
 
-            # --- 3. רמז רגיל לפי השלב בתכנית ---
+            # --- 3. רמז רגיל לפי השלב בתכנית (רק כשאין התאמת expression) ---
             effective_hint_level = (
                 self._config.hints.initial_hint_level if is_new_exercise else hint_level
             )
             effective_history = [] if is_new_exercise else history_turns
             effective_student_message: Optional[str] = None if is_new_exercise else student_message
+
+            step_descriptions = [s.description for s in solution_steps] if solution_steps else []
 
             hint_result = self._generate_hint_llm(
                 session_id=session_id,
@@ -439,7 +508,7 @@ class TutorEngine:
                 skills=skills,
                 hint_level=effective_hint_level,
                 turns_history=effective_history,
-                solution_steps=solution_steps,
+                solution_steps=step_descriptions,
                 current_step_index=current_step_index,
                 final_answer=final_answer or None,
                 is_new_exercise=is_new_exercise,
@@ -470,20 +539,26 @@ class TutorEngine:
     ) -> SolutionPlan:
         """
         יוצר תכנית פתרון מלאה (steps + final_answer) בעזרת LLM.
+        לכל צעד יש:
+        - description: טקסט חופשי.
+        - expression: ביטוי ביניים (למשל "15x=60"), אם רלוונטי.
+
         זה רץ פעם אחת בתחילת תרגיל ונשמר ב-session_state.
-        עובד לכל המקצועות – הפרשנות של steps/final_answer תלויה ב-subject.
+        עובד לכל המקצועות – המשמעות של expression תלויה ב-subject.
         """
-        # system prompt מותאם ל"מחולל תכנית", לא למורה שמדבר עם שירה
         system_prompt = (
             "אתה מורה שמייצר תכנית פתרון לתרגיל עבור עוזר הוראה.\n"
             "אתה לא מדבר עם תלמידה, אלא מחזיר רק תכנית למורה.\n"
-            "המטרה שלך: לפרק את הפתרון לצעדים קטנים וברורים, ולהחזיר JSON בלבד.\n"
-            "פורמט JSON (חובה):\n"
+            "המטרה שלך: לפרק את הפתרון לצעדים קטנים וברורים, ולהחזיר JSON בלבד בפורמט הבא:\n"
             "{\n"
-            '  \"steps\": [\"תיאור צעד ראשון בעברית פשוטה\", \"תיאור צעד שני\", ...],\n'
+            '  \"steps\": [\n'
+            '    {\"description\": \"תיאור צעד ראשון בעברית פשוטה\", \"expression\": \"ביטוי ביניים אחרי הצעד\"},\n'
+            '    {\"description\": \"תיאור צעד שני\", \"expression\": \"ביטוי ביניים נוסף\"}\n'
+            "  ],\n"
             '  \"final_answer\": \"הפתרון הסופי בצורה קצרה, למשל x=4 או משפט באנגלית\"\n'
             "}\n"
-            "אל תוסיף שום טקסט מחוץ ל-JSON.\n"
+            "חובה להחזיר JSON תקין בלבד, בלי טקסט מחוץ ל-JSON.\n"
+            "אם אין ביטוי ביניים מתאים לצעד מסוים (למשל באנגלית), אפשר לשים expression=null או להשמיט את השדה.\n"
         )
 
         user_parts: List[str] = []
@@ -511,10 +586,26 @@ class TutorEngine:
 
         import json
 
+        steps: List[SolutionStep] = []
+        final_answer: str = ""
+
         try:
             data = json.loads(content)
-            steps = [str(s).strip() for s in data.get("steps", []) if str(s).strip()]
+            raw_steps = data.get("steps", [])
             final_answer = str(data.get("final_answer", "")).strip()
+
+            for s in raw_steps:
+                # תומך גם במקרה שה‑LLM החזיר string פשוט (backward compatible)
+                if isinstance(s, str):
+                    desc = s.strip()
+                    if desc:
+                        steps.append(SolutionStep(description=desc, expression=None))
+                elif isinstance(s, dict):
+                    desc = str(s.get("description", "")).strip()
+                    expr_raw = s.get("expression")
+                    expr = str(expr_raw).strip() if isinstance(expr_raw, str) else None
+                    if desc:
+                        steps.append(SolutionStep(description=desc, expression=expr))
         except Exception as e:
             logger.error(
                 "Failed to parse solution plan JSON | error=%s | content=%s",
@@ -525,9 +616,16 @@ class TutorEngine:
             final_answer = ""
 
         if not steps:
-            steps = [f"פתור את התרגיל צעד-צעד, למשל כמו בשאלה: {question_text}"]
+            # fallback מינימלי – צעד טקסטואלי בלבד
+            steps = [
+                SolutionStep(
+                    description=f"פתור את התרגיל צעד-צעד, למשל כמו בשאלה: {question_text}",
+                    expression=None,
+                )
+            ]
 
         return SolutionPlan(steps=steps, final_answer=final_answer)
+
 
     def _normalize_expr(self, s: str) -> str:
         """
@@ -550,6 +648,20 @@ class TutorEngine:
         s = " ".join(s.split())
         s = re.sub(r"[.!?]+$", "", s)
         return s
+
+    def _normalize_hint_text(self, text: str) -> str:
+        """
+        נורמליזציה עדינה לטקסטי רמזים:
+        - מסירה תחביר inline LaTeX פשוט \( ... \) ע"י החלפת '\(' → '(' ו-'\)' → ')'.
+        - לא נוגעת בביטויים כמו 25/5 או בסלאשים אחרים.
+        """
+        if not text:
+            return text
+
+        # מנקים רק backslash לפני סוגריים – תחביר LaTeX inline
+        text = text.replace(r"\(", "(").replace(r"\)", ")")
+
+        return text
 
     def _is_answer_equivalent(
         self,
@@ -827,8 +939,10 @@ class TutorEngine:
             "\n\n"
             "הנחיות נוספות (אל תציג לשירה את הטקסט הזה):\n"
             f"- התרגיל המקורי שאת פותרת איתה הוא: \"{original_question}\".\n"
-            "- בכל רמז, לפני שאת עונה, נתחי את הניסיון האחרון של שירה ביחס לתרגיל המקורי "
-            "וגם ביחס לצעד שבו את נמצאת בתכנית.\n"
+            "- current_step_index מייצג את הצעד בתכנית שהפתרון האחרון של שירה כבר השיג.\n"
+            "- אם מה ששירה כתבה תואם לצעד מתקדם יותר בתכנית (למשל ביטוי ביניים כמו 15x = 60),\n"
+            "  התייחסי אליה כאילו כבר הגיעה לצעד הזה והמשיכי משם – אל תחזירי אותה לצעד קודם.\n"
+            "- אם הצעד הנוכחי לפי התכנית תקין ומתאים למה שהיא כתבה, חזקי אותה והמשיכי לצעד הבא בתכנית.\n"
             "- אם הצעד שלה לא שקול לצעד הנוכחי בתכנית או לתרגיל (למשל טעות בחישוב/חוק גאומטרי/דקדוק באנגלית),\n"
             "  הסבירי במפורש מה הטעות, ואיך להחזיר את הצעד להיות נכון. אל תמשיכי לבנות על צעד שגוי.\n"
             "- אם היא דילגה ישירות לפתרון הסופי נכון (התשובה שלה שקולה לפתרון הסופי),\n"
@@ -836,9 +950,10 @@ class TutorEngine:
             "- אם היא כתבה תשובה שנראית כמו תשובה סופית אך אינה נכונה, התייחסי לזה כאל טעות בסוף הדרך:\n"
             "  החזירי אותה צעד אחד אחורה בתכנית, הסבירי איפה כנראה היה הבלבול, ותני רמז לצעד שלפני הפתרון.\n"
             "- שמרי על תשובות קצרות (עד 3–4 משפטים) ושאלה אחת ברורה להמשך.\n"
-            "-     מותר להשתמש במשפט עידוד ארוך כמו \"שירה, זה ממש בסדר לא לדעת מאיפה להתחיל\" רק פעם אחת וכל פעם בניסוח אחר ורק בתחילת התרגיל.\n"
+            "- מותר להשתמש במשפט עידוד ארוך כמו \"שירה, זה ממש בסדר לא לדעת מאיפה להתחיל\" רק פעם אחת ובניסוח שונה בכל תרגיל.\n"
             "  לאחר מכן השתמשי בעידודים קצרים ושונים, לא באותו ניסוח.\n"
         )
+
 
         if plan_text or final_answer_text:
             system_prompt += "\n" + plan_text + final_answer_text
@@ -868,14 +983,16 @@ class TutorEngine:
         user_prompt += (
             "\n\n"
             "לפני שאת נותנת את הרמז, נתחי במפורש את הצעד האחרון של שירה ביחס לתרגיל המקורי "
-            "ולצעד הנכון לפי התכנית.\n"
-            "- אם הצעד שלה מקדם אותה בהתאם לתכנית, חזקי אותה והמשיכי לצעד הבא.\n"
-            "- אם הצעד שלה מדלג ישר לסוף ונותן פתרון סופי, בדקי בשקט אם הוא זהה לפתרון הסופי שבתכנית.\n"
-            "  אם כן – סגרי את התרגיל: אמירי שהתשובה נכונה, הסבירי בקצרה, והציעי עוד תרגיל.\n"
+            "ולצעדי תכנית הפתרון.\n"
+            "- אם מה ששירה כתבה תואם לצעד מתקדם יותר בתכנית (למשל ביטוי ביניים כמו 15x = 60), "
+            "התייחסי אליה כאילו כבר הגיעה לצעד הזה ותני רמז לצעד הבא בתכנית.\n"
+            "- אם הצעד שלה מדלג ישר לפתרון הסופי, בדקי בשקט אם הוא זהה לפתרון הסופי שבתכנית.\n"
+            "  אם כן – סגרי את התרגיל: אמרי שהתשובה נכונה, הסבירי בקצרה, והציעי עוד תרגיל.\n"
             "  אם לא – הסבירי שזה אינו פתרון נכון, והחזירי אותה לצעד שלפני הסוף (למשל עוד משוואה או צעד ביניים).\n"
-            "- אם הצעד שלה שגוי ביחס לתרגיל או לתכנית, הסבירי למה, ותני רמז לצעד המתוקן.\n"
+            "- אם הצעד שלה שגוי ביחס לתרגיל או לתכנית, הסבירי למה, ותני רמז שיחזיר אותה לצעד המתוקן.\n"
             "בסיום, כתבי רמז אחד בלבד: הסבר קצר (1–3 משפטים) ושאלה אחת ברורה לשלב הבא.\n"
         )
+
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -894,7 +1011,9 @@ class TutorEngine:
             temperature=0.35,
             max_tokens=400,
         )
-        return TutorHintResult(hint_text=content.strip(), hint_level=hint_level)
+
+        cleaned = self._normalize_hint_text(content.strip())
+        return TutorHintResult(hint_text=cleaned, hint_level=hint_level)
 
     def _check_answer_llm(
         self,
