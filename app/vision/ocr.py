@@ -7,7 +7,8 @@ from openai import OpenAI
 
 from app.core.config import logger
 
-VISION_MODEL = "gpt-4-vision-preview"  # או gpt-4o / gpt-4.1-mini אם מוגדר אצלך
+# מודל vision פעיל בחשבון שלך
+VISION_MODEL = "gpt-4.1-mini"  # אפשר להחליף ל-gpt-4o / gpt-4o-mini אם תרצה
 
 
 async def ocr_image_to_text(image_bytes: bytes) -> str:
@@ -34,7 +35,7 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
 
         # שימוש ב-chat.completions עם תוכן תמונה + טקסט
         resp = client.chat.completions.create(
-            VISION_MODEL = "gpt-4.1-mini",
+            model=VISION_MODEL,
             messages=[
                 {
                     "role": "user",
@@ -62,13 +63,13 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
         try:
             choice = resp.choices[0]
             msg = choice.message
-            # בחלק מהגרסאות זה פשוט msg.content (string), בחלק – רשימת חלקים
+            # בחלק מהגרסאות msg.content הוא string, בחלק list של חלקים
             if isinstance(msg.content, str):
                 raw_text = msg.content
             elif isinstance(msg.content, list):
                 parts: list[str] = []
                 for c in msg.content:
-                    if c.get("type") == "text":
+                    if isinstance(c, dict) and c.get("type") == "text":
                         parts.append(c.get("text", ""))
                 raw_text = " ".join(parts)
         except Exception as parse_exc:
