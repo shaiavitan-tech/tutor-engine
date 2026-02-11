@@ -106,39 +106,53 @@ async function streamFromEndpoint(url, body, onFullText) {
     if (done) break;
     const chunk = decoder.decode(value, { stream: true });
     fullText += chunk;
-
-    // עדכון ההודעה האחרונה של הטוטור תוך כדי סטרים
     updateLastTutorMessage(fullText);
   }
 
   onFullText(fullText);
 
-  // --- מעבר לתרגיל הבא בסט אחרי תשובה סופית נכונה ---
+  // --- לופ תרגילים מהתמונה ---
+
+  // זיהוי סיום תרגיל (הטוטור מציע עוד תרגיל)
+  const wantMoreRegex = /רוצה[^.!?]{0,30}עוד[^.!?]{0,30}תרגיל/;
+
+  // יש עוד תרגילים בסט -> עוברים לתרגיל הבא
   if (
     url === "/stream/check" &&
     pendingExercises.length > 0 &&
     currentExerciseIndex >= 0 &&
     currentExerciseIndex < pendingExercises.length - 1 &&
-    fullText.includes("רוצה לנסות עוד תרגיל")
+    wantMoreRegex.test(fullText)
   ) {
     currentExerciseIndex += 1;
     currentSessionId = null;
 
     const nextEx = pendingExercises[currentExerciseIndex];
+
+    // בועה לטקסט
     appendMessage(
       "tutor",
-      `מעולה! עכשיו נעבור לתרגיל הבא מהתמונה:\n${nextEx}\nהאם זה התרגיל הבא שאת רוצה לפתור?`
+      "מעולה! עכשיו נעבור לתרגיל הבא מהתמונה:"
     );
+    // בועה נפרדת רק לתרגיל – תוצג כ-only-math
+    appendMessage("tutor", nextEx);
+    // שאלה
+    appendMessage(
+      "tutor",
+      "האם זה התרגיל הבא שאת רוצה לפתור?"
+    );
+
     waitingForExerciseConfirm = true;
     showExerciseConfirmButtons();
+    return;
   }
 
-  // --- סיום סט התרגילים מהתמונה ---
+  // זה היה התרגיל האחרון בסט -> סוגרים לופ ומציעים עזרה כללית
   if (
     url === "/stream/check" &&
     pendingExercises.length > 0 &&
     currentExerciseIndex === pendingExercises.length - 1 &&
-    fullText.includes("רוצה לנסות עוד תרגיל")
+    wantMoreRegex.test(fullText)
   ) {
     pendingExercises = [];
     currentExerciseIndex = -1;
@@ -148,11 +162,12 @@ async function streamFromEndpoint(url, body, onFullText) {
 
     appendMessage(
       "tutor",
-      "כל הכבוד שירה, פתרנו את כל התרגילים מהתמונה! המשיכי ככה – רק בהתמדה מצליחים. " +
-        "אם את רוצה, אפשר לעבוד עכשיו על תרגילים נוספים."
+      "כל הכבוד שירה, פתרנו את כל התרגילים מהתמונה! " +
+        "אם את רוצה, אפשר לעבוד עכשיו על תרגילים נוספים או על נושא אחר."
     );
   }
 }
+
 
 // ==================== Flow שיחה ====================
 
@@ -316,10 +331,21 @@ async function startExerciseFromImage(file) {
     currentSessionId = null;
 
     const ex = pendingExercises[currentExerciseIndex];
+    const ex = pendingExercises[currentExerciseIndex];
+
     appendMessage(
       "tutor",
-      `זיהיתי בתמונה את התרגיל הראשון: ${ex}\nהאם זה התרגיל שאת רוצה לפתור עכשיו?`
+      "זיהיתי בתמונה את התרגיל הראשון:"
     );
+
+    // בועה נפרדת רק לתרגיל – תזוהה כ-looksLikeExercise ותהפוך ל-only-math (LTR)
+    appendMessage("tutor", ex);
+
+    appendMessage(
+      "tutor",
+      "האם זה התרגיל שאת רוצה לפתור עכשיו?"
+    );
+
     waitingForExerciseConfirm = true;
     showExerciseConfirmButtons();
 
