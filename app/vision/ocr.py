@@ -7,12 +7,12 @@ from openai import OpenAI
 
 from app.core.config import logger
 
-VISION_MODEL = "gpt-4.1-mini"  # או gpt-4o אם זמין
+VISION_MODEL = "gpt-4-vision-preview"  # או gpt-4o / gpt-4.1-mini אם מוגדר אצלך
 
 
 async def ocr_image_to_text(image_bytes: bytes) -> str:
     """
-    OCR אמיתי באמצעות OpenAI Vision:
+    OCR אמיתי באמצעות OpenAI Vision (פורמט chat.completions):
     - מקודד את התמונה ל-base64.
     - שולח ל-API עם הנחיה ברורה: "חלץ רק את הטקסט של התרגיל".
     - מחזיר את הטקסט שחולץ, מנורמל לשורה אחת.
@@ -32,10 +32,10 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
         data_url = f"data:image/jpeg;base64,{b64_image}"
 
-        # קריאה ל-Vision בפורמט הנכון
-        response = client.responses.create(
+        # שימוש ב-chat.completions עם תוכן תמונה + טקסט
+        resp = client.chat.completions.create(
             model=VISION_MODEL,
-            input=[
+            messages=[
                 {
                     "role": "user",
                     "content": [
@@ -48,54 +48,46 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
                             ),
                         },
                         {
-                            "type": "input_image",
-                            "image_url": data_url,
+                            "type": "image_url",
+                            "image_url": {"url": data_url},
                         },
                     ],
                 }
             ],
+            max_tokens=300,
         )
 
-        # ניסיון ראשון: להשתמש ב-helper אם קיים
-        raw_text = getattr(response, "output_text", "") or ""
+        # שליפת הטקסט מהתשובה
+        raw_text = ""
+        try:
+            choice = resp.choices[0]
+            msg = choice.message
+            # בחלק מהגרסאות זה פשוט msg.content (string), בחלק – רשימת חלקים
+            if isinstance(msg.content, str):
+                raw_text = msg.content
+            elif isinstance(msg.content, list):
+                parts: list[str] = []
+                for c in msg.content:
+                    if c.get("type") == "text":
+                        parts.append(c.get("text", ""))
+                raw_text = " ".join(parts)
+        except Exception as parse_exc:
+            logger.error(
+                "ocr_image_to_text | error parsing chat.completions response | error=%s",
+                parse_exc,
+            )
+
         logger.debug(
-            "ocr_image_to_text | output_text_length=%s value_preview=%r",
+            "ocr_image_to_text | raw_text_length=%s value_preview=%r",
             len(raw_text),
             raw_text[:200],
         )
-
-        # Fallback: אם output_text ריק, לנסות לאסוף טקסט מה-output הגולמי (אם יש)
-        if not raw_text and getattr(response, "output", None):
-            parts: list[str] = []
-            try:
-                for item in response.output:
-                    content = getattr(item, "content", None)
-                    if not content:
-                        continue
-                    for c in content:
-                        c_type = getattr(c, "type", None)
-                        # בגרסאות שונות זה יכול להיקרא "output_text" או "text"
-                        if c_type in ("output_text", "text"):
-                            text_val = getattr(c, "text", "") or ""
-                            if text_val:
-                                parts.append(text_val)
-                raw_text = " ".join(parts)
-                logger.debug(
-                    "ocr_image_to_text | fallback_output_text_length=%s value_preview=%r",
-                    len(raw_text),
-                    raw_text[:200],
-                )
-            except Exception as parse_exc:
-                logger.error(
-                    "ocr_image_to_text | error parsing response.output | error=%s",
-                    parse_exc,
-                )
 
         if not raw_text:
             logger.warning("ocr_image_to_text | empty OCR result from Vision")
             return ""
 
-        # נרמול בסיסי – הפיכת רווחים מרובים לרווח אחד, הסרת רווחים בקצוות
+        # נרמול בסיסי
         normalized = " ".join(raw_text.split())
         logger.debug(
             "ocr_image_to_text | normalized_text_length=%s value_preview=%r",
@@ -106,5 +98,4 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
 
     except Exception as exc:
         logger.error("ocr_image_to_text | error=%s", exc)
-        # עדיף להחזיר מחרוזת ריקה ולא להפיל את הזרימה
         return ""
