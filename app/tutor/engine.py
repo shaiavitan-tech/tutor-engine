@@ -207,6 +207,7 @@ class TutorEngine:
         """
         רמז נוסף במהלך session קיים.
         - משתמש ב-session_state כדי לזהות פתרון סופי, לנהל plan וכו'.
+        - אם מזהה תשובה סופית נכונה: מעדכן mastery ישירות ומחזיר פידבק סופי (בלי checker).
         """
         logger.info(
             "TutorEngine.generate_next_hint | session_id=%s", session_id
@@ -343,12 +344,39 @@ class TutorEngine:
                     "generate_next_hint | student gave final correct answer | session_id=%s",
                     session_id,
                 )
+
+                # עדכון mastery ישיר – בלי קריאה ל-checker
+                if detected_skill_codes:
+                    delta = self._config.mastery.correct_delta
+                    logger.debug(
+                        "generate_next_hint | updating mastery (correct answer, no checker) | student_id=%s skills=%s delta=%s",
+                        db_session.student.id,
+                        detected_skill_codes,
+                        delta,
+                    )
+                    for code in detected_skill_codes:
+                        crud.update_skill_mastery(
+                            db=db,
+                            student_id=db_session.student.id,
+                            skill_code=code,
+                            subject=subject,
+                            delta=delta,
+                        )
+                else:
+                    logger.debug(
+                        "generate_next_hint | no detected skills for exercise_id=%s, skipping mastery update",
+                        db_session.exercise.id,
+                    )
+
+                # פידבק פשוט וברור, כולל הטריגר ל"תרגיל הבא" שפרונט מחפש
+                feedback_text = (
+                    "כל הכבוד שירה, התשובה שלך נכונה! "
+                    f"{final_answer} אכן פותר את התרגיל. "
+                    "רוצה לנסות עוד תרגיל? אם כן, כתבי לי תרגיל חדש או צלמי תרגיל נוסף."
+                )
+
                 return TutorHintResult(
-                    hint_text=(
-                        "כל הכבוד שירה, התשובה שלך נכונה! "
-                        f"{final_answer} אכן פותר את התרגיל. "
-                        "רוצה לנסות עוד תרגיל? אם כן, כתבי לי תרגיל חדש או צלמי תרגיל נוסף."
-                    ),
+                    hint_text=feedback_text,
                     hint_level=hint_level,
                     new_exercise_required=False,
                 )
@@ -557,15 +585,17 @@ class TutorEngine:
     # === בדיקת תשובה ===
 
     def check_answer(
-        self,
-        session_id: int,
-        student_answer: str,
+            self,
+            session_id: int,
+            student_answer: str,
+            add_turn: bool = True,
     ) -> Optional[AnswerCheckResult]:
         """
         בדיקת תשובה סופית ל-session.
         - משתמש ב-LLM checker.
-        - מעדכן mastery.
-        - אם התשובה נכונה: מסמן exercise_finished=True ב-state כדי שרמז הבא יבקש תרגיל חדש.
+        - מוסיף turn (אופציונלי) ו-attempt.
+        - מעדכן mastery לכל ה-skills שזוהו בתרגיל.
+        - אם התשובה נכונה: exercise_finished=True ב-state.
         """
         logger.info("TutorEngine.check_answer | session_id=%s", session_id)
 
@@ -596,16 +626,24 @@ class TutorEngine:
                 for c in detected_skill_codes
             ]
 
-            # מוסיפים את תשובת שירה כ-turn
-            crud.add_turn(
-                db=db,
-                session_id=session_id,
-                role="student",
-                message_text=student_answer,
-                hint_level=None,
+            logger.debug(
+                "check_answer | session_id=%s subject=%s skills=%s",
+                session_id,
+                subject.value,
+                detected_skill_codes,
             )
 
-            # קריאת LLM
+            # מוסיפים את תשובת שירה כ-turn רק אם מתבקש
+            if add_turn:
+                crud.add_turn(
+                    db=db,
+                    session_id=session_id,
+                    role="student",
+                    message_text=student_answer,
+                    hint_level=None,
+                )
+
+            # קריאת LLM הבודק
             result = self._check_answer_llm(
                 question_text=question_text,
                 student_answer=student_answer,
@@ -623,18 +661,30 @@ class TutorEngine:
             )
 
             # עדכון mastery לכל המיומנויות
-            delta = (
-                self._config.mastery.correct_delta
-                if result.is_correct
-                else self._config.mastery.incorrect_delta
-            )
-            for code in detected_skill_codes:
-                crud.update_skill_mastery(
-                    db=db,
-                    student_id=db_session.student.id,
-                    skill_code=code,
-                    subject=subject,
-                    delta=delta,
+            if detected_skill_codes:
+                delta = (
+                    self._config.mastery.correct_delta
+                    if result.is_correct
+                    else self._config.mastery.incorrect_delta
+                )
+                logger.debug(
+                    "check_answer | updating mastery | student_id=%s skills=%s delta=%s",
+                    db_session.student.id,
+                    detected_skill_codes,
+                    delta,
+                )
+                for code in detected_skill_codes:
+                    crud.update_skill_mastery(
+                        db=db,
+                        student_id=db_session.student.id,
+                        skill_code=code,
+                        subject=subject,
+                        delta=delta,
+                    )
+            else:
+                logger.debug(
+                    "check_answer | no detected skills for exercise_id=%s, skipping mastery update",
+                    db_session.exercise.id,
                 )
 
             # סימון state של התרגיל כנגמר, אם התשובה נכונה
@@ -642,6 +692,9 @@ class TutorEngine:
                 if session_id not in self._session_state:
                     self._session_state[session_id] = {}
                 self._session_state[session_id]["exercise_finished"] = True
+                logger.debug(
+                    "check_answer | exercise finished | session_id=%s", session_id
+                )
 
             return result
 
@@ -758,7 +811,7 @@ class TutorEngine:
             "- אם היא כתבה תשובה שנראית כמו תשובה סופית אך אינה נכונה, התייחסי לזה כאל טעות בסוף הדרך:\n"
             "  החזירי אותה צעד אחד אחורה בתכנית, הסבירי איפה כנראה היה הבלבול, ותני רמז לצעד שלפני הפתרון.\n"
             "- שמרי על תשובות קצרות (עד 3–4 משפטים) ושאלה אחת ברורה להמשך.\n"
-            "-     מותר להשתמש במשפט עידוד ארוך כמו \"שירה, זה ממש בסדר לא לדעת מאיפה להתחיל\" רק פעם אחת וכל פעם בניסוח אחר בתחילת התרגיל.\n"
+            "-     מותר להשתמש במשפט עידוד ארוך כמו \"שירה, זה ממש בסדר לא לדעת מאיפה להתחיל\" רק פעם אחת וכל פעם בניסוח אחר ורק בתחילת התרגיל.\n"
             "  לאחר מכן השתמשי בעידודים קצרים ושונים, לא באותו ניסוח.\n"
         )
 

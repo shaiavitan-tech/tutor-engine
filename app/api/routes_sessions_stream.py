@@ -14,8 +14,13 @@ router = APIRouter(prefix="/stream", tags=["stream"])
 
 
 class StreamHintRequest(BaseModel):
-  session_id: int
-  student_message: str
+    session_id: int
+    student_message: str
+
+
+class StreamCheckRequest(BaseModel):
+    session_id: int
+    student_answer: str
 
 
 @router.post("/hint")
@@ -30,7 +35,6 @@ async def stream_hint(payload: StreamHintRequest):
         payload.session_id,
     )
 
-    # נשתמש במנוע המרכזי כדי לקבל את הרמז הבא (עם כל הלוגיקה החדשה)
     hint_result = tutor_engine.generate_next_hint(
         session_id=payload.session_id,
         student_message=payload.student_message,
@@ -44,9 +48,36 @@ async def stream_hint(payload: StreamHintRequest):
     text = hint_result.hint_text
 
     async def token_generator() -> AsyncGenerator[str, None]:
-        # אם חשוב לך ממש סטרימינג טוקן-טוקן מהמודל, אפשר להחליף שוב ל-chat_completion_stream,
-        # אבל אז צריך להכניס לשם את ה-prompts מה-Engine. כרגע נזרים את הטקסט כמקשה אחת.
         yield text
 
     return StreamingResponse(token_generator(), media_type="text/plain")
 
+
+@router.post("/check")
+async def stream_check(payload: StreamCheckRequest):
+    """
+    סטרימינג של בדיקת תשובה סופית.
+    קורא ל-TutorEngine.check_answer (ששומר attempt + mastery),
+    ואז מזרים את טקסט הפידבק.
+    """
+    logger.info(
+        "API /stream/check | session_id=%s",
+        payload.session_id,
+    )
+
+    result = tutor_engine.check_answer(
+        session_id=payload.session_id,
+        student_answer=payload.student_answer,
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found or subject not allowed",
+        )
+
+    text = result.feedback_text
+
+    async def token_generator() -> AsyncGenerator[str, None]:
+        yield text
+
+    return StreamingResponse(token_generator(), media_type="text/plain")

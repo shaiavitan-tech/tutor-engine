@@ -117,25 +117,28 @@ def update_skill_mastery(
             mastery=0.0,
         )
         db.add(record)
-        db.flush()
         logger.info(
             "StudentSkillMastery created | student_id=%s skill_code=%s",
             student_id,
             skill_code,
         )
 
-    new_mastery = record.mastery + delta
+    old_mastery = record.mastery
+    new_mastery = old_mastery + delta
     new_mastery = max(cfg.min_mastery, min(cfg.max_mastery, new_mastery))
+
     logger.debug(
         "StudentSkillMastery update | student_id=%s skill_code=%s old=%.4f new=%.4f",
         student_id,
         skill_code,
-        record.mastery,
+        old_mastery,
         new_mastery,
     )
 
     record.mastery = new_mastery
     record.last_updated = datetime.utcnow()
+    db.flush()  # לא חובה אם ה-scope עושה commit, אבל טוב לדיבוג
+
 
 
 # === Exercises & Sessions ===
