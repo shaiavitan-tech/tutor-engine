@@ -208,6 +208,7 @@ class TutorEngine:
         רמז נוסף במהלך session קיים.
         - משתמש ב-session_state כדי לזהות פתרון סופי, לנהל plan וכו'.
         - אם מזהה תשובה סופית נכונה: מעדכן mastery ישירות ומחזיר פידבק סופי (בלי checker).
+        - מעדכן current_step_index לפי הצעדים שהסטודנט כבר "קפץ" אליהם.
         """
         logger.info(
             "TutorEngine.generate_next_hint | session_id=%s", session_id
@@ -331,6 +332,30 @@ class TutorEngine:
                         len(plan.steps),
                         plan.final_answer,
                     )
+
+            # --- 0.5 עדכון current_step_index לפי הצעדים ששירה כבר הגיעה אליהם ---
+            # --- 0.5 עדכון current_step_index לפי הצעדים ששירה כבר הגיעה אליהם ---
+            if solution_steps and not exercise_finished:
+                normalized_student = student_message.replace(" ", "")
+                normalized_question = original_question.replace(" ", "")
+
+                # אם שירה כבר כתבה משוואה שמכילה את כל החלקים של השאלה המקורית (ולא רק חלק),
+                # נניח שהיא קפצה לפחות צעד אחד קדימה.
+                jumped_ahead = (
+                        "=" in normalized_student
+                        and all(part in normalized_student for part in normalized_question.split("=")[0].split("+"))
+                )
+
+                if jumped_ahead and current_step_index < len(solution_steps) - 1:
+                    new_index = current_step_index + 1
+                    logger.debug(
+                        "generate_next_hint | heuristic jump ahead | session_id=%s from_index=%s to_index=%s",
+                        session_id,
+                        current_step_index,
+                        new_index,
+                    )
+                    current_step_index = new_index
+                    state["current_step_index"] = current_step_index
 
             # --- 1. בדיקה: האם יש פתרון סופי נכון לתרגיל הנוכחי ---
             if final_answer and self._is_answer_equivalent(
