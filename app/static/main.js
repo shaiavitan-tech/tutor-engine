@@ -84,6 +84,7 @@ function updateLastTutorMessage(text) {
 }
 
 // סטרימינג – תמיד משתמש ב-/stream/*
+// סטרימינג – תמיד משתמש ב-/stream/*
 async function streamFromEndpoint(url, body, onFullText) {
   const resp = await fetch(url, {
     method: "POST",
@@ -106,6 +107,8 @@ async function streamFromEndpoint(url, body, onFullText) {
     if (done) break;
     const chunk = decoder.decode(value, { stream: true });
     fullText += chunk;
+
+    // עדכון ההודעה האחרונה של הטוטור תוך כדי סטרים
     updateLastTutorMessage(fullText);
   }
 
@@ -134,7 +137,7 @@ async function streamFromEndpoint(url, body, onFullText) {
       "tutor",
       "מעולה! עכשיו נעבור לתרגיל הבא מהתמונה:"
     );
-    // בועה נפרדת רק לתרגיל – תוצג כ-only-math
+    // בועה נפרדת רק לתרגיל – תוצג כ-only-math (LTR)
     appendMessage("tutor", nextEx);
     // שאלה
     appendMessage(
@@ -315,6 +318,7 @@ async function startExerciseFromImage(file) {
   hideExerciseConfirmButtons();
 
   // --- חשבון / גאומטריה (subject="math") ---
+    // --- חשבון / גאומטריה (subject="math") ---
   if (data.subject === "math") {
     pendingExercises = Array.isArray(data.exercises) ? data.exercises : [];
 
@@ -331,16 +335,15 @@ async function startExerciseFromImage(file) {
     currentSessionId = null;
 
     const ex = pendingExercises[currentExerciseIndex];
-    const ex = pendingExercises[currentExerciseIndex];
 
+    // בועה לטקסט
     appendMessage(
       "tutor",
       "זיהיתי בתמונה את התרגיל הראשון:"
     );
-
-    // בועה נפרדת רק לתרגיל – תזוהה כ-looksLikeExercise ותהפוך ל-only-math (LTR)
+    // בועה נפרדת רק לתרגיל – תזוהה כ-only-math (LTR)
     appendMessage("tutor", ex);
-
+    // שאלה
     appendMessage(
       "tutor",
       "האם זה התרגיל שאת רוצה לפתור עכשיו?"
@@ -351,6 +354,7 @@ async function startExerciseFromImage(file) {
 
     return;
   }
+
 
   // --- אנגלית (subject="english") ---
   if (data.subject === "english") {
@@ -394,12 +398,22 @@ subjectMathBtn.addEventListener("click", () => selectSubject("math"));
 subjectGeometryBtn.addEventListener("click", () => selectSubject("geometry"));
 
 // Enter בשדה ההודעה
+// Enter בשדה ההודעה
 studentMessageInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
-    handleStudentMessageSend(false);
+    const msg = studentMessageInput.value.trim();
+    if (!msg) return;
+
+    // heuristic: אם זה נראה כמו תשובה סופית – נשלח כ-check
+    const looksLikeFinal =
+      /^x\s*=\s*[-+]?\d+(\.\d+)?\s*$/.test(msg) ||
+      (/=/.test(msg) && !msg.includes("?"));
+
+    handleStudentMessageSend(looksLikeFinal);
   }
 });
+
 
 // כפתור צילום / העלאת תמונה
 // צילום במצלמה
