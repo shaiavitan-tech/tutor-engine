@@ -43,10 +43,11 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
                         {
                             "type": "text",
                             "text": (
-                                "Please extract only the text of the exercise from this image. "
-                                "If there are multiple lines, keep them in order. "
-                                "Do not add explanations, just the raw exercise text."
+                                "Please extract only the text of the exercises from this image. "
+                                "Return each separate exercise on its own line. "
+                                "Do not add numbering or explanations, just the raw exercise text lines."
                             ),
+
                         },
                         {
                             "type": "image_url",
@@ -88,14 +89,28 @@ async def ocr_image_to_text(image_bytes: bytes) -> str:
             logger.warning("ocr_image_to_text | empty OCR result from Vision")
             return ""
 
-        # נרמול בסיסי
-        normalized = " ".join(raw_text.split())
         logger.debug(
-            "ocr_image_to_text | normalized_text_length=%s value_preview=%r",
-            len(normalized),
+            "ocr_image_to_text | raw_text_length=%s value_preview=%r",
+            len(raw_text),
+            raw_text[:200],
+        )
+
+        if not raw_text:
+            logger.warning("ocr_image_to_text | empty OCR result from Vision")
+            return ""
+
+        # נרמול: שומרים תרגיל אחד בכל שורה
+        lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+        normalized = "\n".join(lines)
+
+        logger.debug(
+            "ocr_image_to_text | normalized_lines=%s value_preview=%r",
+            len(lines),
             normalized[:200],
         )
-        return normalized.strip()
+
+        return normalized
+
 
     except Exception as exc:
         logger.error("ocr_image_to_text | error=%s", exc)
