@@ -9,8 +9,6 @@ let waitingForExerciseConfirm = false; // האם מחכים ל"כן/לא" על �
 
 // אלמנטים
 const studentMessageInput = document.getElementById("studentMessage");
-const hintBtn = document.getElementById("hintBtn");
-const finalBtn = document.getElementById("finalBtn");
 const chatLog = document.getElementById("chatLog");
 
 const subjectPicker = document.getElementById("subjectPicker");
@@ -125,8 +123,6 @@ async function streamFromEndpoint(url, body, onFullText) {
   ) {
     currentExerciseIndex += 1;
     currentSessionId = null;
-    hintBtn.disabled = true;
-    finalBtn.disabled = true;
 
     const nextEx = pendingExercises[currentExerciseIndex];
     appendMessage(
@@ -147,8 +143,6 @@ async function streamFromEndpoint(url, body, onFullText) {
     pendingExercises = [];
     currentExerciseIndex = -1;
     currentSessionId = null;
-    hintBtn.disabled = true;
-    finalBtn.disabled = true;
     waitingForExerciseConfirm = false;
     hideExerciseConfirmButtons();
 
@@ -256,14 +250,15 @@ async function startExerciseFromText(text) {
   });
 
   const data = await resp.json();
+  console.log("start_from_text response:", data);
+
   if (!data.allowed) {
     appendMessage("tutor", data.message || "השאלה לא בתחום אנגלית/מתמטיקה.");
     return;
   }
 
   currentSessionId = data.session_id;
-  hintBtn.disabled = false;
-  finalBtn.disabled = false;
+  console.log("currentSessionId set to:", currentSessionId);
 
   appendMessage("tutor", data.hint_text);
 }
@@ -319,8 +314,6 @@ async function startExerciseFromImage(file) {
     // נתחיל מהתרגיל הראשון: קודם מאשרים עם כן/לא
     currentExerciseIndex = 0;
     currentSessionId = null;
-    hintBtn.disabled = true;
-    finalBtn.disabled = true;
 
     const ex = pendingExercises[currentExerciseIndex];
     appendMessage(
@@ -342,8 +335,6 @@ async function startExerciseFromImage(file) {
     pendingExercises = Array.isArray(data.tasks) ? data.tasks : [];
     currentExerciseIndex = 0;
     currentSessionId = null;
-    hintBtn.disabled = true;
-    finalBtn.disabled = true;
 
     if (pendingExercises.length) {
       const firstTask = pendingExercises[0];
@@ -375,14 +366,6 @@ async function startExerciseFromImage(file) {
 subjectEnglishBtn.addEventListener("click", () => selectSubject("english"));
 subjectMathBtn.addEventListener("click", () => selectSubject("math"));
 subjectGeometryBtn.addEventListener("click", () => selectSubject("geometry"));
-
-// כפתורי רמז / תשובה
-hintBtn.addEventListener("click", () => {
-  handleStudentMessageSend(false);
-});
-finalBtn.addEventListener("click", () => {
-  handleStudentMessageSend(true);
-});
 
 // Enter בשדה ההודעה
 studentMessageInput.addEventListener("keydown", (event) => {
