@@ -1,0 +1,24 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.0
+
+SQLAlchemy==2.0.25
+alembic==1.13.2
+
+pydantic==2.9.2
+pydantic-settings==2.6.1
+
+python-multipart==0.0.17
+jinja2==3.1.4
+
+# OCR – עדכן לפי מה שאתה משתמש בפועל
+pillow==10.4.0
+pytesseract==0.3.13
+
+# HTTP client / utilities (אם צריך)
+httpx==0.27.2
+
+# ל‑LLM (אם אתה ניגש ל‑OpenAI / API אחר)
+openai==1.54.4
+
+# לוגים ועוד
+loguru==0.7.2

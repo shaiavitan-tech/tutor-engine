@@ -1,0 +1,382 @@
+/* בסיס */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Alef", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f1f5f9;
+  margin: 0;
+  padding: 0;
+  color: #0f172a;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* כותרת */
+
+.app-header {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.app-title {
+  text-align: center;
+  background: linear-gradient(135deg, #e0f2fe, #fef9c3);
+  padding: 16px 24px;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+}
+
+.app-title h1 {
+  margin: 0;
+  font-size: 2.4rem;
+  color: #0f172a;
+}
+
+.app-title p {
+  margin: 8px 0 0;
+  color: #475569;
+}
+
+/* פריסת שני הפאנלים */
+
+.layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.panel {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.panel-settings {
+  flex: 1 1 320px;
+  max-width: 380px;
+}
+
+.panel-chat {
+  flex: 2 1 480px;
+}
+
+/* כותרות פאנלים */
+
+.panel h2 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1.3rem;
+  color: #0f172a;
+}
+
+/* שדות */
+
+.field {
+  margin-bottom: 12px;
+}
+
+.field label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #334155;
+}
+
+input[type="text"],
+input[type="file"],
+textarea,
+#studentName,
+#questionText,
+#studentMessage {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #cbd5f5;
+  padding: 8px 10px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: #f8fafc;
+}
+
+textarea:focus,
+input:focus {
+  outline: 2px solid #93c5fd;
+  border-color: #2563eb;
+  background: #ffffff;
+}
+
+/* כפתורים */
+
+.btn {
+  border-radius: 999px;
+  border: none;
+  padding: 8px 14px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+}
+
+.btn-primary {
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
+}
+
+.btn-primary:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: #f97316;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(249, 115, 22, 0.3);
+}
+
+.btn-secondary:hover {
+  background: #ea580c;
+  transform: translateY(-1px);
+}
+
+.btn-outline {
+  background: transparent;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+
+.btn-outline:hover {
+  background: #eff6ff;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  box-shadow: none;
+}
+
+.full-width {
+  width: 100%;
+}
+
+/* קו מפריד "או" */
+
+.divider {
+  display: flex;
+  align-items: center;
+  margin: 14px 0;
+  color: #9ca3af;
+  font-size: 0.8rem;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex-grow: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.divider span {
+  padding: 0 8px;
+}
+
+/* טיפ */
+
+.tip {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  background: #eff6ff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #1e293b;
+}
+
+/* אזור השיחה */
+
+.chat-log {
+  max-height: 460px;
+  min-height: 200px;
+  overflow-y: auto;
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+}
+
+.message {
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  max-width: 80%;
+}
+
+.message.student {
+  align-self: flex-end;
+  text-align: right;
+}
+
+.message.tutor {
+  align-self: flex-start;
+  text-align: right;
+}
+
+.message .role {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.message.student .role {
+  text-align: right;
+}
+
+.message.tutor .role {
+  text-align: left;
+}
+
+/* בועת הטקסט עצמה */
+.message div:last-child {
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+
+  /* ברירת מחדל: עברית, מאפשר אי‑LTR בפנים */
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+
+.message.student div:last-child {
+  background: #2563eb;
+  color: #ffffff;
+  border-bottom-right-radius: 4px;
+}
+
+.message.tutor div:last-child {
+  background: #e5f3ff;
+  color: #0f172a;
+  border-bottom-left-radius: 4px;
+}
+
+/* ביטויים מתמטיים בתוך הבועות */
+.math-ltr {
+  direction: ltr;
+  unicode-bidi: embed;
+}
+
+/* תיבת תגובה */
+
+.reply-box {
+  margin-top: 12px;
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.reply-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #334155;
+}
+
+.reply-buttons {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+/* שדה הקלט של שירה – LTR למספרים/מינוס */
+#studentMessage {
+  direction: ltr;
+  unicode-bidi: embed;
+}
+
+/* רספונסיביות לטלפון/טאבלט */
+
+@media (max-width: 900px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .panel-settings,
+  .panel-chat {
+    max-width: 100%;
+  }
+
+  .chat-log {
+    max-height: 320px;
+  }
+}
+
+.subject-picker {
+  margin-bottom: 12px;
+  background: #eff6ff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+}
+
+.subject-picker p {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.subject-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-subject {
+  flex: 1 1 0;
+  text-align: center;
+}
+
+.btn-subject.english {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.btn-subject.math {
+  background: #0f766e;
+  color: #fff;
+}
+
+.btn-subject.geometry {
+  background: #f97316;
+  color: #fff;
+}
+
+.btn-subject:hover {
+  filter: brightness(1.05);
+}
+
+.layout-single {
+  display: flex;
+  justify-content: center;
+}
+
+.panel-chat.full-width {
+  flex: 1 1 0;
+  max-width: 900px;
+}
+
+.file-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

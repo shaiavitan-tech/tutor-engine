@@ -1,0 +1,36 @@
+# וירטואל־env
+venv/
+.env
+*.env
+.env.*
+
+# קבצי קומפילציה של Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# קבצי לוגים
+*.log
+
+# SQLite / DB מקומי – לא להעלות את הנתונים של שירה
+*.sqlite
+*.sqlite3
+db.sqlite
+db.sqlite3
+/data/
+instance/
+tmp/
+tutor.db
+# VSCode / IDE
+.vscode/
+.idea/
+*.iml
+
+# קבצי מערכת
+.DS_Store
+Thumbs.db
+
+# קבצי build
+dist/
+build/

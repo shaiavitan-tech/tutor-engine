@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+  <meta charset="UTF-8" />
+  <title>העוזר החכם של שירה </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body dir="rtl">
+  <div class="app">
+    <header class="app-header">
+      <div class="app-title">
+        <h1>העוזר החכם של שירה המהממת</h1>
+        <p>אני בוט אישי שעוזר לשירה ללמוד אנגלית ומתמטיקה 😊</p>
+      </div>
+    </header>
+
+    <main class="layout-single">
+      <section class="panel panel-chat full-width">
+        <h2>שיחה עם העוזר</h2>
+
+        <div id="chatLog" class="chat-log"></div>
+
+        <!-- בחירת נושא בתחילת השיחה -->
+        <div id="subjectPicker" class="subject-picker">
+          <p> היי שירה, באיזה נושא תרצי עזרה היום?</p>
+          <div class="subject-buttons">
+            <button id="subjectEnglish" class="btn btn-subject english">
+              אנגלית
+            </button>
+            <button id="subjectMath" class="btn btn-subject math">
+              חשבון
+            </button>
+            <button id="subjectGeometry" class="btn btn-subject geometry">
+              גאומטריה
+            </button>
+          </div>
+        </div>
+
+        <div class="reply-box">
+          <label for="studentMessage" class="reply-label">
+            מה הצעד הבא שלך?
+          </label>
+          <textarea
+            id="studentMessage"
+            rows="3"
+            placeholder="כתבי כאן את התרגיל, את המחשבה הבאה שלך, או תשובה.
+לחיצה על Enter תשלח את ההודעה (Shift+Enter יעבור שורה)."
+          ></textarea>
+
+          <div class="reply-buttons">
+            <button id="hintBtn" class="btn btn-outline" disabled>
+              בקשי רמז נוסף
+            </button>
+            <button id="finalBtn" class="btn btn-primary" disabled>
+              שלחי תשובה סופית לבדיקה
+            </button>
+
+            <label class="btn btn-secondary file-label">
+              📷 צלמי תרגיל
+              <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden />
+            </label>
+
+            <label class="btn btn-outline file-label">
+              📁 העלאת קובץ
+              <input type="file" id="fileInput" accept="image/*" hidden />
+            </label>
+            <div class="reply-buttons" id="exerciseConfirmButtons" style="display:none;">
+              <button id="exerciseYesBtn" class="btn btn-primary">כן</button>
+              <button id="exerciseNoBtn" class="btn btn-outline">לא</button>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/main.js"></script>
+</body>
+</html>
