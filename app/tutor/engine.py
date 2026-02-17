@@ -1023,7 +1023,8 @@ class TutorEngine:
                         self._session_state[session_id] = {}
                     self._session_state[session_id]["exercise_finished"] = True
 
-                    if exercise.source_type == "image":
+                    # כאן ההבדלה בין תרגיל מהתמונה לבין תרגיל מהטקסט
+                    if db_session.exercise.source_type == "image":
                         # תרגיל מתוך תמונה -> מוסיפים טריגר ללופ JS
                         feedback_text = (
                             f"כל הכבוד שירה, התשובה שלך {student_answer} נכונה "
@@ -1078,7 +1079,7 @@ class TutorEngine:
                     )
             # --- סוף בדיקה מוקדמת ---
 
-            # קריאת LLM הבודק
+            # קריאת LLM הבודק – פעם אחת
             result = self._check_answer_llm(
                 question_text=question_text,
                 student_answer=student_answer,
@@ -1093,17 +1094,11 @@ class TutorEngine:
                                                         "מה התרגיל הבא שאת רוצה לפתור?"
                 )
 
-            # קריאת LLM הבודק
-            result = self._check_answer_llm(
-                question_text=question_text,
-                student_answer=student_answer,
-                subject=subject,
-                skills=skills,
-            )
-
             # --- לוגיקה נוספת: ניתוח פתרונות מרובים (x=3,x=-3 וכו') ---
-            # ננסה לפרש את התשובה של שירה כרשימת פתרונות
-            student_solutions = self._parse_solutions(student_answer)
+            # ננסה לפרש את התשובה של שירה כרשימת פתרונות, רק אם קיימת מתודה _parse_solutions
+            student_solutions = {}
+            if hasattr(self, "_parse_solutions"):
+                student_solutions = self._parse_solutions(student_answer) or {}
 
             # אם אין בכלל פורמט x=..., נחזיר את result כמו שהוא
             if student_solutions:
