@@ -1023,23 +1023,12 @@ class TutorEngine:
                         self._session_state[session_id] = {}
                     self._session_state[session_id]["exercise_finished"] = True
 
-                    # כאן ההבדלה בין תרגיל מהתמונה לבין תרגיל מהטקסט
-                    if db_session.exercise.source_type == "image":
-                        # תרגיל מתוך תמונה -> מוסיפים טריגר ללופ JS
-                        feedback_text = (
-                            f"כל הכבוד שירה, התשובה שלך {student_answer} נכונה "
-                            f"והיא שקולה לפתרון הסופי {final_answer}. "
-                            "פתרת את המשוואה מצוין! "
-                            "רוצה לנסות עוד תרגיל מהתמונה?"
-                        )
-                    else:
-                        # תרגיל שהוזן ידנית -> בלי טריגר
-                        feedback_text = (
-                            f"כל הכבוד שירה, התשובה שלך {student_answer} נכונה "
-                            f"והיא שקולה לפתרון הסופי {final_answer}. "
-                            "פתרת את המשוואה מצוין! "
-                            "מה התרגיל הבא שאת רוצה לפתור?"
-                        )
+                    feedback_text = (
+                        f"כל הכבוד שירה, התשובה שלך {student_answer} נכונה "
+                        f"והיא שקולה לפתרון הסופי {final_answer}. "
+                        "פתרת את המשוואה מצוין! "
+                        "רוצה לנסות עוד תרגיל?"
+                    )
 
                     # שמירת Attempt
                     crud.add_attempt(
