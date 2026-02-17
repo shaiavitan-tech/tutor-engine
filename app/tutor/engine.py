@@ -319,6 +319,66 @@ class TutorEngine:
                     if desc:
                         solution_steps.append(SolutionStep(description=desc, expression=expr))
 
+            original_question: str = state.get("original_question") or db_session.exercise.raw_text
+            raw_steps = state.get("solution_steps", [])
+            final_answer: str = state.get("final_answer", "")
+            current_step_index: int = int(state.get("current_step_index", 0))
+            exercise_finished: bool = bool(state.get("exercise_finished", False))
+
+            # נוודא ש‑solution_steps הוא List[SolutionStep]
+            solution_steps: List[SolutionStep] = []
+            for s in raw_steps:
+                ...
+                # הקוד הקיים שלך
+                ...
+
+            # >>> כאן להכניס נורמליזציה לפני כל התנאים <<<
+            if subject == Subject.MATH and student_message:
+                import re
+                tmp = student_message.strip()
+                tmp = re.sub(r"\s*(או|OR|or)\s*", ",", tmp)
+                tmp = tmp.replace(" ", "")
+                parts = tmp.split(",")
+                x_vals = []
+                for part in parts:
+                    m = re.match(r"x=([\-+]?\d+(\.\d+)?)", part)
+                    if m:
+                        try:
+                            x_vals.append(float(m.group(1)))
+                        except ValueError:
+                            pass
+                if x_vals:
+                    vals_sorted = sorted(set(x_vals))
+                    # student_message בפורמט קנוני, למשל "x=-3 או x=3"
+                    student_message = " או ".join([f"x={v:g}" for v in vals_sorted])
+
+                if final_answer:
+                    tmp_f = final_answer.strip()
+                    tmp_f = re.sub(r"\s*(או|OR|or)\s*", ",", tmp_f)
+                    tmp_f = tmp_f.replace(" ", "")
+                    parts_f = tmp_f.split(",")
+                    x_vals_f = []
+                    for part in parts_f:
+                        m = re.match(r"x=([\-+]?\d+(\.\d+)?)", part)
+                        if m:
+                            try:
+                                x_vals_f.append(float(m.group(1)))
+                            except ValueError:
+                                pass
+                    if x_vals_f:
+                        vals_sorted_f = sorted(set(x_vals_f))
+                        final_answer = " או ".join([f"x={v:g}" for v in vals_sorted_f])
+
+            logger.debug(
+                "next_hint_state | session_id=%s | original_question=%r | final_answer=%r | current_step_index=%s | student=%r | steps=%s",
+                session_id,
+                original_question,
+                final_answer,
+                current_step_index,
+                student_message,
+                len(solution_steps),
+            )
+
             logger.debug(
                 "next_hint_state | session_id=%s | original_question=%r | final_answer=%r | current_step_index=%s | student=%r | steps=%s",
                 session_id,
@@ -405,7 +465,7 @@ class TutorEngine:
                         hint_text = (
                             f"שירה, הגעת למשוואה {prev_expr}, שזה צעד מצוין. "
                             f"הצעד הבא הוא: {next_step.description}. "
-                            "נסי לבצע את הצעד הזה וכתבי לי מה קיבלת."
+                            "נסי לבצע את הצעד הזה וכתבי לי מה קיבלת. "
                         )
 
                         # נורמליזציה לאותו פורמט כמו שאר הרמזים
@@ -423,6 +483,100 @@ class TutorEngine:
                     # אם אין צעד הבא (אנחנו בעצם כבר בסוף ה-plan), רק נעדכן אינדקס ונמשיך לזרימה הרגילה
                     current_step_index = matched_index
                     state["current_step_index"] = current_step_index
+
+            # --- 0.8 פתרונות מרובים שנראים סופיים (x=3,x=-3 וכו') ---
+            # ננסה לפרש את ההודעה של שירה כרשימת פתרונות אפשריים, למשל "x=3,x=-3"
+            multi_solutions = self._parse_solutions(student_message) if hasattr(self, "_parse_solutions") else {}
+            if multi_solutions and not exercise_finished and not is_new_exercise:
+                # כרגע נתמקד במשתנה x בלבד (הרחבה לשני נעלמים בהמשך)
+                student_x_vals = multi_solutions.get("x", [])
+                # אם אין לנו final_answer מרשימת ה-plan, נמשיך כרגיל
+                if final_answer:
+                    # ננסה לפרש גם את final_answer כפיתרון/ים עבור x
+                    correct_solutions = self._parse_solutions(final_answer) if hasattr(self, "_parse_solutions") else {}
+                    correct_x_vals = correct_solutions.get("x", [])
+
+                    # אם אין פורמט מרובה ב-final_answer, ננסה לקחת את ה-x משם, אחרת נסתמך על רשימת הצעדים
+                    if not correct_x_vals:
+                        # לדוגמה final_answer="x=7" → correct_x_vals=[7.0]
+                        correct_x_vals = self._parse_solutions(f"x={final_answer.split('=')[-1]}").get("x", [])
+
+                    if correct_x_vals:
+                        from math import isclose
+
+                        # נשווה סטים של פתרונות (בעיגול קטן נגד רעש float)
+                        s_set = {round(v, 6) for v in student_x_vals}
+                        c_set = {round(v, 6) for v in correct_x_vals}
+
+                        extra = s_set - c_set
+                        missing = c_set - s_set
+
+                        if not extra and not missing:
+                            # כל הפתרונות נכונים → נסגור תרגיל בלי checker
+                            state["exercise_finished"] = True
+                            logger.debug(
+                                "generate_next_hint | student provided all correct solutions (multi) | session_id=%s",
+                                session_id,
+                            )
+
+                            if detected_skill_codes:
+                                delta = self._config.mastery.correct_delta
+                                logger.debug(
+                                    "generate_next_hint | updating mastery (multi correct, no checker) | student_id=%s skills=%s delta=%s",
+                                    db_session.student.id,
+                                    detected_skill_codes,
+                                    delta,
+                                )
+                                for code in detected_skill_codes:
+                                    crud.update_skill_mastery(
+                                        db=db,
+                                        student_id=db_session.student.id,
+                                        skill_code=code,
+                                        subject=subject,
+                                        delta=delta,
+                                    )
+                            else:
+                                logger.debug(
+                                    "generate_next_hint | no detected skills for exercise_id=%s, skipping mastery update (multi)",
+                                    db_session.exercise.id,
+                                )
+
+                            feedback_text = (
+                                "כל הכבוד שירה, כל הפתרונות שרשמת נכונים! "
+                                "פתרת יפה את התרגיל. "
+                                "מה התרגיל הבא שאת רוצה לפתור?"
+                            )
+
+                            return TutorHintResult(
+                                hint_text=feedback_text,
+                                hint_level=hint_level,
+                                new_exercise_required=False,
+                            )
+
+                        else:
+                            # חלק נכון חלק לא – נסביר לה בצורה עדינה
+                            messages = []
+                            if extra:
+                                messages.append(
+                                    f"הערכים {sorted(extra)} אינם פתרונות נכונים."
+                                )
+                            if missing:
+                                messages.append(
+                                    f"חסרים לך הפתרונות {sorted(missing)}."
+                                )
+
+                            feedback_text = (
+                                    "את בדרך טובה, אבל לא כל הפתרונות שרשמת נכונים.\n"
+                                    + " ".join(messages)
+                                    + " נסי לחשוב שוב אילו ערכים באמת מקיימים את המשוואה."
+                            )
+
+                            return TutorHintResult(
+                                hint_text=feedback_text,
+                                hint_level=hint_level,
+                                new_exercise_required=False,
+                            )
+
 
             # --- 1. בדיקה: האם יש פתרון סופי נכון לתרגיל הנוכחי ---
             if final_answer and self._is_answer_equivalent(
@@ -513,6 +667,32 @@ class TutorEngine:
                 final_answer=final_answer or None,
                 is_new_exercise=is_new_exercise,
             )
+
+            # אם ה-LLM כבר אומר במפורש שהתשובה הנוכחית שקולה לפתרון הסופי – נסגור את התרגיל
+            if (
+                    subject == Subject.MATH
+                    and final_answer
+                    and hint_result
+                    and isinstance(hint_result.hint_text, str)
+            ):
+                normalized_hint = hint_result.hint_text.replace(" ", "")
+                normalized_final = str(final_answer).replace(" ", "")
+                # לדוגמה: "x=3אוx=-3" מופיע בטקסט הרמז
+                if normalized_final in normalized_hint:
+                    state["exercise_finished"] = True
+                    logger.debug(
+                        "generate_next_hint | LLM confirmed final_answer inside hint, marking exercise_finished | session_id=%s",
+                        session_id,
+                    )
+                    # נוסיף גם משפט סיום ברור אם עדיין אין כזה
+                    if "מה התרגיל הבא" not in hint_result.hint_text:
+                        hint_result.hint_text = (
+                                hint_result.hint_text.rstrip()
+                                + " "
+                                + "מה התרגיל הבא שאת רוצה לפתור?"
+                        )
+
+                    return hint_result
 
             # עדכון current_step_index קדימה (אם יש plan)
             if solution_steps:
@@ -662,6 +842,27 @@ class TutorEngine:
         text = text.replace(r"\(", "(").replace(r"\)", ")")
 
         return text
+
+    def _normalize_math_final(self, text: str) -> str:
+        import re
+        if not text:
+            return text
+        tmp = text.strip()
+        tmp = re.sub(r"\s*(או|OR|or)\s*", ",", tmp)
+        tmp = tmp.replace(" ", "")
+        parts = tmp.split(",")
+        x_vals = []
+        for part in parts:
+            m = re.match(r"x=([\-+]?\d+(\.\d+)?)", part)
+            if m:
+                try:
+                    x_vals.append(float(m.group(1)))
+                except ValueError:
+                    pass
+        if len(x_vals) >= 1:
+            vals_sorted = sorted(set(x_vals))
+            return " או ".join([f"x={v:g}" for v in vals_sorted])
+        return text.strip()
 
     def _is_answer_equivalent(
             self,
@@ -882,6 +1083,84 @@ class TutorEngine:
                                                         "מה התרגיל הבא שאת רוצה לפתור?"
                 )
 
+            # קריאת LLM הבודק
+            result = self._check_answer_llm(
+                question_text=question_text,
+                student_answer=student_answer,
+                subject=subject,
+                skills=skills,
+            )
+
+            # --- לוגיקה נוספת: ניתוח פתרונות מרובים (x=3,x=-3 וכו') ---
+            # ננסה לפרש את התשובה של שירה כרשימת פתרונות
+            student_solutions = self._parse_solutions(student_answer)
+
+            # אם אין בכלל פורמט x=..., נחזיר את result כמו שהוא
+            if student_solutions:
+                # ננסה לחלץ גם מתוך טקסט ה-feedback שלו פתרון "נכון" אם צוין בצורה מפורשת
+                # למשל אם הוא כתב איפשהו "הפתרון הנכון הוא x=3,x=-3"
+                import re
+                m = re.search(r"x\s*=\s*[\-+]?\d+(\.\d+)?(?:\s*,\s*x\s*=\s*[\-+]?\d+(\.\d+)?)?", result.feedback_text)
+                correct_solutions = None
+                if m:
+                    # ננסה לפרק את המחרוזת שנמצאה
+                    correct_solutions = self._parse_solutions(m.group(0))
+
+                if correct_solutions:
+                    # נשווה סטים של ערכים לכל משתנה
+                    detailed_messages = []
+                    overall_correct = True
+
+                    for var, student_vals in student_solutions.items():
+                        expected_vals = correct_solutions.get(var, [])
+                        # הופכים לסט של מס' מעוגלים קטנה כדי להתגבר על רעשי float
+                        s_set = {round(v, 6) for v in student_vals}
+                        e_set = {round(v, 6) for v in expected_vals}
+
+                        if not e_set:
+                            # לא ציפינו לפתרונות עבור var זה → נתייחס כלא נכון
+                            overall_correct = False
+                            detailed_messages.append(
+                                f"עבור {var}, נתת את הערכים {student_vals}, אבל לא ציפיתי לערך כזה."
+                            )
+                            continue
+
+                        extra = s_set - e_set
+                        missing = e_set - s_set
+
+                        if not extra and not missing:
+                            detailed_messages.append(
+                                f"עבור {var}, כל הערכים שנתת ({sorted(s_set)}) נכונים."
+                            )
+                        else:
+                            overall_correct = False
+                            if extra:
+                                detailed_messages.append(
+                                    f"עבור {var}, הערכים {sorted(extra)} אינם פתרונות נכונים."
+                                )
+                            if missing:
+                                detailed_messages.append(
+                                    f"עבור {var}, חסרים לך הפתרונות {sorted(missing)}."
+                                )
+
+                    # נבנה פידבק חדש במידה והצלחנו לנתח
+                    if detailed_messages:
+                        if overall_correct:
+                            feedback_text = (
+                                "כל הכבוד שירה, כל הפתרונות שרשמת נכונים. "
+                                "עברת יפה על כל האפשרויות. "
+                                "מה התרגיל הבא שאת רוצה לפתור?"
+                            )
+                        else:
+                            feedback_text = (
+                                    "חלק מהפתרונות שלך נכונים וחלק לא:\n"
+                                    + "\n".join(detailed_messages) +
+                                    "\nנסי שוב לתקן לפי ההערות."
+                            )
+
+                        result.is_correct = overall_correct
+                        result.feedback_text = feedback_text
+            # --- סוף לוגיקה לפתרונות מרובים ---
             # שמירת Attempt
             crud.add_attempt(
                 db=db,
@@ -1033,8 +1312,9 @@ class TutorEngine:
             "\n\n"
             "הנחיות נוספות (אל תציג לשירה את הטקסט הזה):\n"
             f"- התרגיל המקורי שאת פותרת איתה הוא: \"{original_question}\".\n"
-            "- כשאת כותבת את המשוואה או מצטטת אותה, העתיקי אותה בדיוק כפי שהיא מופיעה בשאלה, "
+            "- כשאת כותבת את המשוואה או מצטטת אותה, העתיקי אותה בדיוק כפי שהיא מופיעה בשאלה "
             "בלי להפוך את סדר האגפים ובלי לשנות את הסימן של x.\n"
+            "‏בבקשה הקפד/י לכתוב את החיסור בצד הימני כ‑(24 - 8) ולא (8 - 24) כאשר מחסרים 8 מהמספר 24.\n"
             "- current_step_index מייצג את הצעד בתכנית שהפתרון האחרון של שירה כבר השיג.\n"
             "- אם מה ששירה כתבה תואם לצעד מתקדם יותר בתכנית (למשל ביטוי ביניים כמו 15x = 60),\n"
             "  התייחסי אליה כאילו כבר הגיעה לצעד הזה והמשיכי משם – אל תחזירי אותה לצעד קודם.\n"
@@ -1180,3 +1460,42 @@ class TutorEngine:
         )
 
         return AnswerCheckResult(is_correct=is_correct, feedback_text=feedback)
+
+def _parse_solutions(self, text: str) -> Dict[str, List[float]]:
+    """
+    מקבל מחרוזת כמו:
+    "x=3,x=-3", "x=3 או x=-3", "x=3 OR x=-3"
+    או "x=9,y=3"
+    ומחזיר dict:
+    {"x": [3.0, -3.0]} או {"x": [9.0], "y": [3.0]}.
+    """
+    import re
+
+    solutions: Dict[str, List[float]] = {}
+    if not text:
+        return solutions
+
+    # נורמליזציה בסיסית: מסירים רווחים סביב =, ומחליפים "או"/"OR" בפסיק
+    normalized = text.strip()
+    # unify separators: או, OR, or  → ,
+    normalized = re.sub(r"\s*(או|OR|or)\s*", ",", normalized)
+    # להסיר רווחים מיותרים
+    normalized = normalized.replace(" ", "")
+
+    parts = normalized.split(",")
+
+    for part in parts:
+        if not part:
+            continue
+        m = re.match(r"([a-zA-Z])=([\-+]?\d+(\.\d+)?)", part)
+        if not m:
+            continue
+        var = m.group(1)
+        try:
+            val = float(m.group(2))
+        except ValueError:
+            continue
+        solutions.setdefault(var, []).append(val)
+
+    return solutions
+
