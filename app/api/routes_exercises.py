@@ -154,21 +154,33 @@ async def start_from_image(
             detail="Empty image",
         )
 
-    # OCR
-    text = await ocr_image_to_text(image_bytes)
-    if not text or not text.strip():
-        logger.info("start_from_image | empty OCR result")
+    # --- OCR חדש: מחזיר אובייקט מובנה ---
+    ocr_result = await ocr_image_to_text(image_bytes)
+    instructions = ocr_result.get("instructions", "") or ""
+    ocr_exercises = ocr_result.get("exercises", []) or []
+
+    if not ocr_exercises:
+        logger.info("start_from_image | empty OCR result (no exercises)")
         return StartFromImageResponse(
             allowed=False,
             message="לא הצלחתי לקרוא את הטקסט מהתמונה. נסי שוב עם תמונה ברורה יותר.",
         )
 
+    # מחברים הוראות + כל התרגילים לצורך סיווג נושא
+    combined_text_parts: list[str] = []
+    if instructions.strip():
+        combined_text_parts.append(instructions.strip())
+    combined_text_parts.extend(
+        ex.get("text", "") for ex in ocr_exercises if ex.get("text")
+    )
+    combined_text = "\n".join(p for p in combined_text_parts if p.strip())
+
     logger.debug(
-        "start_from_image | OCR result length=%s",
-        len(text),
+        "start_from_image | OCR combined_text length=%s",
+        len(combined_text),
     )
 
-    classification: QuestionClassification | None = ensure_allowed_subject(text)
+    classification: QuestionClassification | None = ensure_allowed_subject(combined_text)
     if classification is None:
         logger.info("start_from_image | off-topic question after OCR")
         return StartFromImageResponse(
@@ -182,13 +194,32 @@ async def start_from_image(
         subject.value,
     )
 
-    # --- 1. חשבון / גאומטריה (אצלך תחת Subject.MATH) ---
+    # --- 1. חשבון / גאומטריה (Subject.MATH) ---
     if subject == Subject.MATH:
-        exercises = _split_ocr_to_math_exercises(text)
+        # טקסטי התרגילים כפי שחולצו מה-OCR (כבר בלי סעיפים)
+        exercises_text = [ex["text"] for ex in ocr_exercises if ex.get("text")]
         logger.debug(
-            "start_from_image | math/geometry exercises_count=%s",
+            "start_from_image | math/geometry raw_exercises_count=%s",
+            len(exercises_text),
+        )
+
+        if not exercises_text:
+            return StartFromImageResponse(
+                allowed=False,
+                message="לא הצלחתי לזהות תרגילי חשבון/גאומטריה בתמונה.",
+            )
+
+        # שמירה על ההתנהגות הקיימת: עדיין משתמשים ב-_split_ocr_to_math_exercises על טקסט שורות
+        raw_for_split = "\n".join(exercises_text)
+        exercises = _split_ocr_to_math_exercises(raw_for_split)
+        logger.debug(
+            "start_from_image | math/geometry exercises_count_after_split=%s",
             len(exercises),
         )
+
+        if not exercises:
+            # fallback: אם הפונקציה לא חילקה כלום, משתמשים ברשימה שכבר יש לנו
+            exercises = exercises_text
 
         # נתחיל session ורמז רק לתרגיל הראשון; השאר יטופלו בצד ה-frontend
         first_question_text = exercises[0]
@@ -220,8 +251,8 @@ async def start_from_image(
 
     # --- 2. אנגלית ---
     if subject == Subject.ENGLISH:
-        # בשלב ראשון: כל הטקסט כמשימה אחת; אפשר לשדרג אחר כך לניתוח LLM מפורט.
-        normalized = classification.normalized_question or text.strip()
+        # בשלב ראשון: כל הטקסט המאוחד כמשימה אחת; אפשר לשדרג אחר כך לפירוק לפי exercises
+        normalized = classification.normalized_question or combined_text.strip()
 
         summary = (
             "זיהיתי דף תרגול באנגלית. "
