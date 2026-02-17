@@ -664,11 +664,11 @@ class TutorEngine:
         return text
 
     def _is_answer_equivalent(
-        self,
-        subject: Subject,
-        question: str,
-        student: str,
-        target: str,
+            self,
+            subject: Subject,
+            question: str,
+            student: str,
+            target: str,
     ) -> bool:
         """
         בודק אם תשובת שירה שקולה לפתרון הסופי.
@@ -676,6 +676,7 @@ class TutorEngine:
         מתמטיקה/גאומטריה:
         - קודם השוואה טקסטואלית מנורמלת.
         - אם לא שווה, ובתשובה יש צורה של x=מספר – ננסה להציב במשוואה ולראות אם שני האגפים שווים.
+        - בנוסף, נזהה וריאציות שונות של x=מספר (עם רווחים/נקודה) וגם מקרה בו שירה כתבה רק את המספר.
 
         אנגלית:
         - נירמול טקסט כללי.
@@ -685,11 +686,30 @@ class TutorEngine:
 
         # מתמטיקה / גאומטריה
         if subject in (Subject.MATH, getattr(Subject, "GEOMETRY", Subject.MATH)):
+            # נירמול טקסטואלי כללי (x=7 מול x = 7)
             if self._normalize_expr(student) == self._normalize_expr(target):
                 return True
 
-            # ניסיון נוסף: אם התשובה בצורה x=number, נבדוק אם היא פותרת את המשוואה המקורית
             import re
+
+            # אם ה-target הוא x=מספר והסטודנט כתבה x=מספר (עם רווחים/נקודה)
+            m_target = re.match(r"\s*x\s*=\s*([\-+]?\d+(\.\d+)?)\s*$", target, re.IGNORECASE)
+            m_student = re.match(r"\s*x\s*=\s*([\-+]?\d+(\.\d+)?)\s*$", student, re.IGNORECASE)
+            if m_target and m_student:
+                try:
+                    return float(m_target.group(1)) == float(m_student.group(1))
+                except Exception:
+                    pass
+
+            # אם ה-target הוא x=מספר והסטודנט כתבה רק מספר
+            m_student_num = re.match(r"\s*([\-+]?\d+(\.\d+)?)\s*$", student)
+            if m_target and m_student_num:
+                try:
+                    return float(m_target.group(1)) == float(m_student_num.group(1))
+                except Exception:
+                    pass
+
+            # ניסיון נוסף: אם התשובה בצורה x=number, נבדוק אם היא פותרת את המשוואה המקורית
             m = re.match(r"\s*x\s*=\s*([\-+]?\d+)\s*$", student, re.IGNORECASE)
             if m:
                 try:
@@ -702,8 +722,8 @@ class TutorEngine:
                         expr_right = right.replace("X", "x").replace("x", f"({x_val})")
                         # שימוש ב-eval רק על ביטויים מספריים פשוטים
                         from math import isclose
-                        val_left = eval(expr_left)   # כאן זה 2*4+3
-                        val_right = eval(expr_right) # כאן זה 11
+                        val_left = eval(expr_left)  # כאן זה 2*4+3
+                        val_right = eval(expr_right)  # כאן זה 11
                         return isclose(val_left, val_right)
                 except Exception:
                     return False
@@ -716,8 +736,6 @@ class TutorEngine:
 
         # ברירת מחדל
         return self._normalize_text(student) == self._normalize_text(target)
-
-
 
     # === בדיקת תשובה ===
 
@@ -780,6 +798,75 @@ class TutorEngine:
                     hint_level=None,
                 )
 
+            # --- בדיקה מוקדמת מול final_answer מתוך ה-session_state (למתמטיקה) ---
+            state = self._session_state.get(session_id) or {}
+            final_answer = state.get("final_answer")
+            logger.debug(
+                "check_answer | session_id=%s final_answer_in_state=%r",
+                session_id,
+                final_answer,
+            )
+            if subject == Subject.MATH and final_answer:
+                if self._is_answer_equivalent(
+                        subject=subject,
+                        question=question_text,
+                        student=student_answer,
+                        target=final_answer,
+                ):
+                    logger.debug(
+                        "check_answer | student answer matches final_answer in state, skipping LLM checker | session_id=%s",
+                        session_id,
+                    )
+
+                    if session_id not in self._session_state:
+                        self._session_state[session_id] = {}
+                    self._session_state[session_id]["exercise_finished"] = True
+
+                    feedback_text = (
+                        f"כל הכבוד שירה, התשובה שלך {student_answer} נכונה "
+                        f"והיא שקולה לפתרון הסופי {final_answer}. "
+                        "פתרת את המשוואה מצוין! "
+                        "מה התרגיל הבא שאת רוצה לפתור?"
+                    )
+
+                    # שמירת Attempt
+                    crud.add_attempt(
+                        db=db,
+                        session_id=session_id,
+                        answer_text=student_answer,
+                        is_correct=True,
+                        feedback_text=feedback_text,
+                    )
+
+                    # עדכון mastery לכל המיומנויות
+                    if detected_skill_codes:
+                        delta = self._config.mastery.correct_delta
+                        logger.debug(
+                            "check_answer | updating mastery (early correct) | student_id=%s skills=%s delta=%s",
+                            db_session.student.id,
+                            detected_skill_codes,
+                            delta,
+                        )
+                        for code in detected_skill_codes:
+                            crud.update_skill_mastery(
+                                db=db,
+                                student_id=db_session.student.id,
+                                skill_code=code,
+                                subject=subject,
+                                delta=delta,
+                            )
+                    else:
+                        logger.debug(
+                            "check_answer | no detected skills for exercise_id=%s, skipping mastery update (early)",
+                            db_session.exercise.id,
+                        )
+
+                    return AnswerCheckResult(
+                        is_correct=True,
+                        feedback_text=feedback_text,
+                    )
+            # --- סוף בדיקה מוקדמת ---
+
             # קריאת LLM הבודק
             result = self._check_answer_llm(
                 question_text=question_text,
@@ -787,6 +874,13 @@ class TutorEngine:
                 subject=subject,
                 skills=skills,
             )
+
+            # אם התשובה נכונה – נוסיף גם כאן הזמנה לתרגיל הבא
+            if result.is_correct:
+                result.feedback_text = (
+                        result.feedback_text.rstrip() + " "
+                                                        "מה התרגיל הבא שאת רוצה לפתור?"
+                )
 
             # שמירת Attempt
             crud.add_attempt(

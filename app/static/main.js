@@ -83,7 +83,7 @@ function updateLastTutorMessage(text) {
   }
 }
 
-
+// סטרימינג – תמיד משתמש ב-/stream/*
 // סטרימינג – תמיד משתמש ב-/stream/*
 async function streamFromEndpoint(url, body, onFullText) {
   const resp = await fetch(url, {
@@ -108,7 +108,7 @@ async function streamFromEndpoint(url, body, onFullText) {
     const chunk = decoder.decode(value, { stream: true });
     fullText += chunk;
 
-    // תמיד מעדכן את ההודעה האחרונה של הטוטור – כל המספרים ברמזים נשארים כמו שנשלחו
+    // עדכון ההודעה האחרונה של הטוטור תוך כדי סטרים
     updateLastTutorMessage(fullText);
   }
 
@@ -116,33 +116,30 @@ async function streamFromEndpoint(url, body, onFullText) {
 
   // --- לופ תרגילים מהתמונה ---
 
-  // רק אם אנחנו ב-check על סט תרגילים מהתמונה בכלל
-  const isCheckOnImageSet =
-    url === "/stream/check" &&
-    pendingExercises.length > 0 &&
-    currentExerciseIndex >= 0;
-
-  if (!isCheckOnImageSet) {
-    return;
-  }
-
-  // זיהוי סיום תרגיל – משפט מפורש שהעוזר מציע תרגיל נוסף
-  const wantMoreRegex = /רוצה[^.!?]{0,40}עוד[^.!?]{0,40}תרגיל/;
-
-  // אם הטקסט לא כולל כזה משפט – לא עושים כלום, נשארים על אותו תרגיל
-  if (!wantMoreRegex.test(fullText)) {
-    return;
-  }
+  // זיהוי סיום תרגיל (הטוטור מציע עוד תרגיל)
+  const wantMoreRegex = /רוצה[^.!?]{0,30}עוד[^.!?]{0,30}תרגיל/;
 
   // יש עוד תרגילים בסט -> עוברים לתרגיל הבא
-  if (currentExerciseIndex < pendingExercises.length - 1) {
+  if (
+    url === "/stream/check" &&
+    pendingExercises.length > 0 &&
+    currentExerciseIndex >= 0 &&
+    currentExerciseIndex < pendingExercises.length - 1 &&
+    wantMoreRegex.test(fullText)
+  ) {
     currentExerciseIndex += 1;
     currentSessionId = null;
 
     const nextEx = pendingExercises[currentExerciseIndex];
 
-    appendMessage("tutor", "מעולה! עכשיו נעבור לתרגיל הבא מהתמונה:");
+    // בועה לטקסט
+    appendMessage(
+      "tutor",
+      "מעולה! עכשיו נעבור לתרגיל הבא מהתמונה:"
+    );
+    // בועה נפרדת רק לתרגיל – תוצג כ-only-math (LTR)
     appendMessage("tutor", nextEx);
+    // שאלה
     appendMessage(
       "tutor",
       "האם זה התרגיל הבא שאת רוצה לפתור?"
@@ -153,20 +150,26 @@ async function streamFromEndpoint(url, body, onFullText) {
     return;
   }
 
-  // זה היה התרגיל האחרון בסט -> סוגרים לופ
-  pendingExercises = [];
-  currentExerciseIndex = -1;
-  currentSessionId = null;
-  waitingForExerciseConfirm = false;
-  hideExerciseConfirmButtons();
+  // זה היה התרגיל האחרון בסט -> סוגרים לופ ומציעים עזרה כללית
+  if (
+    url === "/stream/check" &&
+    pendingExercises.length > 0 &&
+    currentExerciseIndex === pendingExercises.length - 1 &&
+    wantMoreRegex.test(fullText)
+  ) {
+    pendingExercises = [];
+    currentExerciseIndex = -1;
+    currentSessionId = null;
+    waitingForExerciseConfirm = false;
+    hideExerciseConfirmButtons();
 
-  appendMessage(
-    "tutor",
-    "כל הכבוד שירה, פתרנו את כל התרגילים מהתמונה! " +
-      "אם את רוצה, אפשר לעבוד עכשיו על תרגילים נוספים או על נושא אחר."
-  );
+    appendMessage(
+      "tutor",
+      "כל הכבוד שירה, פתרנו את כל התרגילים מהתמונה! " +
+        "אם את רוצה, אפשר לעבוד עכשיו על תרגילים נוספים או על נושא אחר."
+    );
+  }
 }
-
 
 
 // ==================== Flow שיחה ====================
@@ -403,9 +406,9 @@ studentMessageInput.addEventListener("keydown", (event) => {
     if (!msg) return;
 
     // heuristic: אם זה נראה כמו תשובה סופית – נשלח כ-check
+      // תשובה סופית רק אם זה ממש x=מספר
     const looksLikeFinal =
-      /^x\s*=\s*[-+]?\d+(\.\d+)?\s*$/.test(msg) ||
-      (/=/.test(msg) && !msg.includes("?"));
+      /^x\s*=\s*[-+]?\d+(\.\d+)?\s*$/.test(msg);
 
     handleStudentMessageSend(looksLikeFinal);
   }
