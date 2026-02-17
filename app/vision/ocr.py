@@ -199,13 +199,14 @@ async def ocr_image_to_text(image_bytes: bytes) -> OcrResult:
             "ocr_image_to_text | instructions_len=%s exercises_count=%s first_ex_preview=%r",
             len(instructions),
             len(exercises),
-            exercises["text"][:120] if exercises else "",
+            exercises[0]["text"][:120] if exercises else "",
         )
 
         return {
             "instructions": instructions,
             "exercises": exercises,
         }
+
 
     except Exception as exc:
         logger.error("ocr_image_to_text | error=%s", exc)
