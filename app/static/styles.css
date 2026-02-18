@@ -339,6 +339,18 @@ body {
 
 /* התאמה למובייל – ללא התנגשות עם הקיים */
 @media (max-width: 480px) {
+  /* תיקון גלילה: הגוף לא גולל, ה־app בגובה מסך אמיתי */
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .app.wa-shell {
+    min-height: 100dvh;    /* במקום 100vh הבעייתי במובייל */
+  }
+
   .subject-picker.wa-subject-picker {
     margin: 4px 4px 6px;   /* קצת פחות שוליים בצדדים */
     padding: 6px 8px;      /* טיפונת הדוק יותר */
@@ -361,6 +373,8 @@ body {
     font-size: 0.9rem;
   }
 }
+
+
 /* שורה לכפתור שינוי נושא – תמיד קיימת, רק הכפתור מוסתר/מוצג */
 .subject-back-row {
   margin-top: 6px;
@@ -427,6 +441,7 @@ body {
     html, body {
       height: 100%;
       margin: 0;
+      overflow: hidden;        /* הגוף עצמו לא גולל */
     }
 
     .app.wa-shell {
