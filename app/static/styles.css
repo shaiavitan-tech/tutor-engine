@@ -388,6 +388,10 @@ body {
 
 .btn-subject {
   flex: 1 1 0;
+  display: flex;                /* הופך את הכפתור עצמו ל-flex */
+  align-items: center;          /* מרכז אנכית את האייקון והטקסט */
+  justify-content: center;      /* מרכז אופקית */
+  gap: 4px;                     /* רווח קטן בין האייקון לטקסט */
   text-align: center;
   border-radius: 14px;
   padding: 6px 4px;
@@ -396,6 +400,7 @@ body {
   font-size: 0.8rem;
   cursor: pointer;
 }
+
 
 .subject-icon {
   font-size: 1rem;
