@@ -334,6 +334,30 @@ body {
   flex-wrap: wrap;
 }
 
+/* התאמה למובייל – ללא התנגשות עם הקיים */
+@media (max-width: 480px) {
+  .subject-picker.wa-subject-picker {
+    margin: 4px 4px 6px;   /* קצת פחות שוליים בצדדים */
+    padding: 6px 8px;      /* טיפונת הדוק יותר */
+  }
+
+  .subject-header-row p {
+    font-size: 0.8rem;     /* טקסט מעט קטן יותר */
+  }
+
+  .subject-buttons {
+    gap: 4px;              /* רווח קטן יותר בין הכפתורים */
+  }
+
+  .btn-subject {
+    font-size: 0.75rem;
+    padding: 5px 2px;
+  }
+
+  .subject-icon {
+    font-size: 0.9rem;
+  }
+}
 /* שורה לכפתור שינוי נושא – תמיד קיימת, רק הכפתור מוסתר/מוצג */
 .subject-back-row {
   margin-top: 6px;
