@@ -121,7 +121,7 @@ body {
 
 
 .chat-log.wa-chat-log {
-  flex: 1 1 70%;
+  flex: 1 1 60%;
   min-height: 0;               /* חשוב כדי ש-Flex יקטין כשצריך */
   overflow-y: auto;
   padding: 10px 8px 8px;
@@ -180,7 +180,7 @@ body {
 /* קומפוזר */
 
 .reply-box.wa-composer {
-  flex: 0 0 30%;   /* בערך 40–45% מסך לשורת ההקלדה והכפתורים */
+  flex: 0 0 40%;   /* בערך 40–45% מסך לשורת ההקלדה והכפתורים */
   display: flex;
   flex-direction: column;
 }
