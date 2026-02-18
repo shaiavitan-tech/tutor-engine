@@ -10,7 +10,8 @@ let waitingForExerciseConfirm = false; // האם מחכים ל"כן/לא" על �
 // אלמנטים
 const studentMessageInput = document.getElementById("studentMessage");
 const chatLog = document.getElementById("chatLog");
-
+const sendButton = document.getElementById("sendButton");
+console.log("sendButton is", sendButton);
 const subjectPicker = document.getElementById("subjectPicker");
 const subjectEnglishBtn = document.getElementById("subjectEnglish");
 const subjectMathBtn = document.getElementById("subjectMath");
@@ -22,7 +23,14 @@ const fileInput = document.getElementById("fileInput");
 const exerciseConfirmButtons = document.getElementById("exerciseConfirmButtons");
 const exerciseYesBtn = document.getElementById("exerciseYesBtn");
 const exerciseNoBtn = document.getElementById("exerciseNoBtn");
+document.getElementById("subjectButtonsRow");
 
+const subjectButtonsRow = document.getElementById("subjectButtonsRow");
+const subjectHeaderText = document.getElementById("subjectHeaderText");
+const backToHomeBtn = document.getElementById("backToHomeBtn");
+
+
+document.getElementById("subjectHeaderText");
 function showExerciseConfirmButtons() {
   if (exerciseConfirmButtons) exerciseConfirmButtons.style.display = "flex";
 }
@@ -184,7 +192,20 @@ function startInitialConversation() {
 
 function selectSubject(subject) {
   currentSubject = subject;
-  if (subjectPicker) subjectPicker.style.display = "none";
+
+  // אחרי בחירה:
+  // - מסתירים את המשפט
+  // - מסתירים את שלושת הכפתורים
+  // - מראים את כפתור "שינוי נושא" באותה קופסה, בצד שמאל
+  if (subjectHeaderText) subjectHeaderText.style.display = "none";
+
+  if (subjectButtonsRow) {
+    if (subjectEnglishBtn) subjectEnglishBtn.style.display = "none";
+    if (subjectMathBtn) subjectMathBtn.style.display = "none";
+    if (subjectGeometryBtn) subjectGeometryBtn.style.display = "none";
+  }
+
+  if (backToHomeBtn) backToHomeBtn.style.display = "inline-flex";
 
   if (subject === "english") {
     appendMessage(
@@ -203,6 +224,10 @@ function selectSubject(subject) {
     );
   }
 }
+
+
+
+
 
 async function handleStudentMessageSend(isFinalAnswer = false) {
   const msg = studentMessageInput.value.trim();
@@ -397,22 +422,44 @@ subjectEnglishBtn.addEventListener("click", () => selectSubject("english"));
 subjectMathBtn.addEventListener("click", () => selectSubject("math"));
 subjectGeometryBtn.addEventListener("click", () => selectSubject("geometry"));
 
+// כפתור "שינוי נושא" בראש המסך
+if (backToHomeBtn) {
+  backToHomeBtn.addEventListener("click", () => {
+    resetToMainScreen();
+  });
+}
+
 // Enter בשדה ההודעה
+// פונקציה אחת שמחליטה אם זה looksLikeFinal וקוראת ל-handleStudentMessageSend
+function sendCurrentMessageLikeEnter() {
+  const msg = studentMessageInput.value.trim();
+  if (!msg) return;
+
+  // heuristic: אם זה נראה כמו תשובה סופית – נשלח כ-check
+  // תשובה סופית רק אם זה ממש x=מספר
+  const looksLikeFinal =
+    /^x\s*=\s*[-+]?\d+(\.\d+)?\s*$/.test(msg);
+
+  handleStudentMessageSend(looksLikeFinal);
+}
+
 // Enter בשדה ההודעה
 studentMessageInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
-    const msg = studentMessageInput.value.trim();
-    if (!msg) return;
-
-    // heuristic: אם זה נראה כמו תשובה סופית – נשלח כ-check
-      // תשובה סופית רק אם זה ממש x=מספר
-    const looksLikeFinal =
-      /^x\s*=\s*[-+]?\d+(\.\d+)?\s*$/.test(msg);
-
-    handleStudentMessageSend(looksLikeFinal);
+    sendCurrentMessageLikeEnter();
   }
 });
+
+// כפתור השליחה – בדיוק כמו Enter
+if (sendButton) {
+  sendButton.addEventListener("click", () => {
+    console.log("sendButton clicked");
+    sendCurrentMessageLikeEnter();
+  });
+}
+
+
 
 
 // כפתור צילום / העלאת תמונה
@@ -486,3 +533,31 @@ exerciseNoBtn.addEventListener("click", () => {
     `הבנתי, כנראה טעיתי בזיהוי. כתבי לי כאן את התרגיל במקום:\n${ex}\nואז נתחיל לפתור אותו.`
   );
 });
+
+function resetToMainScreen() {
+  currentSubject = null;
+  currentSessionId = null;
+  pendingExercises = [];
+  currentExerciseIndex = -1;
+  waitingForExerciseConfirm = false;
+  hideExerciseConfirmButtons();
+
+  // מחזיר את המשפט
+  if (subjectHeaderText) subjectHeaderText.style.display = "block";
+
+  // מחזיר את כפתורי הנושא
+  if (subjectButtonsRow) {
+    if (subjectEnglishBtn) subjectEnglishBtn.style.display = "inline-flex";
+    if (subjectMathBtn) subjectMathBtn.style.display = "inline-flex";
+    if (subjectGeometryBtn) subjectGeometryBtn.style.display = "inline-flex";
+  }
+
+  // מחביא את כפתור שינוי הנושא
+  if (backToHomeBtn) backToHomeBtn.style.display = "none";
+
+  appendMessage(
+    "tutor",
+    "חזרנו לבחירת נושא 😊 בחרי מחדש: אנגלית, חשבון או גאומטריה."
+  );
+}
+

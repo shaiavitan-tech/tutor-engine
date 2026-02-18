@@ -7,65 +7,99 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body dir="rtl">
-  <div class="app">
-    <header class="app-header">
-      <div class="app-title">
-        <h1>העוזר החכם של שירה המהממת</h1>
-        <p>אני בוט אישי שעוזר לשירה ללמוד אנגלית ומתמטיקה 😊</p>
+  <div class="app wa-shell">
+    <header class="wa-header">
+      <div class="wa-header-main">
+        <div class="wa-header-title">
+          <h1>💜 העוזר החכם של שירה 💜</h1>
+          <span class="wa-header-sub">    מחובר עכשיו • בואי נכבוש עוד תרגיל ✨</span>
+        </div>
+        <div class="wa-header-actions">
+          <span class="wa-header-icon">🦄</span>
+        </div>
       </div>
     </header>
 
-    <main class="layout-single">
-      <section class="panel panel-chat full-width">
-        <h2>שיחה עם העוזר</h2>
+    <main class="wa-chat-wrapper">
+      <section class="panel panel-chat full-width wa-chat-panel">
+        <div class="wa-chat-top-strip">
+          <span class="wa-top-chip">שיחה עם העוזר המגניב שלך 🌈</span>
+        </div>
 
-        <div id="chatLog" class="chat-log"></div>
+        <div id="chatLog" class="chat-log wa-chat-log">
+          <!-- הודעות מנוהלות ע״י main.js -->
+        </div>
 
         <!-- בחירת נושא בתחילת השיחה -->
-        <div id="subjectPicker" class="subject-picker">
-          <p> היי שירה, באיזה נושא תרצי עזרה היום?</p>
-          <div class="subject-buttons">
+        <div id="subjectPicker" class="subject-picker wa-subject-picker">
+          <div class="subject-header-row">
+            <p id="subjectHeaderText">היי שירה 😊 מה בא לך היום?</p>
+          </div>
+
+          <div class="subject-buttons" id="subjectButtonsRow">
             <button id="subjectEnglish" class="btn btn-subject english">
-              אנגלית
+              <span class="subject-icon">📚</span>
+              <span>אנגלית ✨</span>
             </button>
             <button id="subjectMath" class="btn btn-subject math">
-              חשבון
+              <span class="subject-icon">🔢</span>
+              <span>חשבון 💡</span>
             </button>
             <button id="subjectGeometry" class="btn btn-subject geometry">
-              גאומטריה
+              <span class="subject-icon">📐</span>
+              <span>גאומטריה 🎨</span>
+            </button>
+          </div>
+
+          <!-- כפתור שינוי נושא – באותו בלוק, מוסתר בהתחלה -->
+          <div class="subject-back-row">
+            <button id="backToHomeBtn" class="btn back-btn-top" style="display:none;">
+              🔁 שינוי נושא
             </button>
           </div>
         </div>
 
-        <div class="reply-box">
-          <label for="studentMessage" class="reply-label">
-            מה הצעד הבא שלך?
-          </label>
-          <textarea
-            id="studentMessage"
-            rows="3"
-            placeholder="כתבי כאן את התרגיל, את המחשבה הבאה שלך, או תשובה.
-לחיצה על Enter תשלח את ההודעה (Shift+Enter יעבור שורה)."
-          ></textarea>
 
-          <div class="reply-buttons">
-            <label class="btn btn-secondary file-label">
-              📷 צלמי תרגיל
-              <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden />
-            </label>
 
-            <label class="btn btn-outline file-label">
-              📁 העלאת קובץ
-              <input type="file" id="fileInput" accept="image/*" hidden />
-            </label>
 
-            <div class="reply-buttons" id="exerciseConfirmButtons" style="display:none;">
-              <button id="exerciseYesBtn" class="btn btn-primary">כן</button>
-              <button id="exerciseNoBtn" class="btn btn-outline">לא</button>
+
+        <div class="reply-box wa-composer">
+          <div class="reply-input-row">
+            <!-- כפתור אימוג'ים ירד לפי הבקשה -->
+
+            <div class="reply-input-wrapper">
+              <textarea
+                id="studentMessage"
+                rows="1"
+                placeholder="הקלידי הודעה… 💬"
+              ></textarea>
+            </div>
+
+            <div class="wa-composer-actions">
+              <label class="wa-icon-button file-label">
+                📎
+                <input type="file" id="fileInput" accept="image/*" hidden />
+              </label>
+
+              <label class="wa-icon-button file-label">
+                📷
+                <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden />
+              </label>
+
+              <!-- כפתור שליחה: הוסף לו id כדי לחבר ל‑Enter ב-JS -->
+              <button type="button" class="wa-send-button" id="sendButton">➤</button>
             </div>
           </div>
 
-
+          <div class="reply-bottom-row wa-confirm-row">
+            <div class="reply-hint">
+              Enter שולח • Shift+Enter שורה חדשה 🚀
+            </div>
+            <div class="reply-buttons" id="exerciseConfirmButtons" style="display:none;">
+              <button id="exerciseYesBtn" class="btn btn-primary">כן 👍</button>
+              <button id="exerciseNoBtn" class="btn btn-outline">לא 🙅‍♀️</button>
+            </div>
+          </div>
         </div>
       </section>
     </main>
