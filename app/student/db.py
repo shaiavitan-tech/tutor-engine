@@ -12,17 +12,25 @@ from app.student.models import Base
 
 # ==================== הגדרת ה-DB ====================
 
-# ברירת מחדל מקומית: ./tutor.db
-# ברנדר תגדיר משתנה סביבה DB_PATH=/var/data/tutor.db
-DB_PATH = os.getenv("DB_PATH", "./tutor.db")
+# ברירת מחדל: tutor.db ב-root של הפרויקט (ליד requirements.txt)
+# ברנדר אפשר לשנות דרך משתנה סביבה DB_PATH אם צריך
+_DEFAULT_DB_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),  # app/student/
+    "..",                                         # app/
+    "..",                                         # project root
+    "tutor.db"
+)
+DB_PATH = os.getenv("DB_PATH", os.path.normpath(_DEFAULT_DB_PATH))
 
-# sqlite:/// + path יחסי או מוחלט (SQLAlchemy יטפל ב-scheme נכון)
+# וודא שהתיקייה קיימת לפני פתיחת ה-DB
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},  # רק ל-SQLite
-    echo=False,  # אפשר להפוך ל-True לדיבאג SQL
+    connect_args={"check_same_thread": False},
+    echo=False,
 )
 
 SessionLocal = sessionmaker(
@@ -46,10 +54,7 @@ def init_db() -> None:
 @contextmanager
 def db_session_scope() -> Iterator[Session]:
     """
-    Context manager לניהול Session:
-    - נפתח בתחילת בלוק.
-    - commit בסיום.
-    - rollback אוטומטי במקרה של שגיאה.
+    Context manager לניהול Session.
     """
     db: Session = SessionLocal()
     try:
